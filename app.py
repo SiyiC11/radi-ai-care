@@ -111,5 +111,5 @@ if st.button("🔍 生成解說" if language != "English" else "🔍 Generate Ex
     with st.spinner("AI 正在生成..." if language != "English" else "AI is generating..."):
         result = explain_report(report, language)
         st.markdown(result, unsafe_allow_html=True)
-        from log_to_sheets import log_usage
-        log_usage(language, report)
+        from log_to_sheets import log_to_google_sheets
+        log_to_google_sheets(language, len(report))
