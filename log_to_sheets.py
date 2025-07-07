@@ -39,5 +39,3 @@ worksheet.append_row(["timestamp", "date", "time"])
 
 for index, row in df.iterrows():
     worksheet.append_row([str(row["timestamp"]), str(row["date"]), str(row["time"])])
-
-print("✅ Log uploaded to Google Sheets.")
