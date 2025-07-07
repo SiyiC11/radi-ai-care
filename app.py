@@ -10,7 +10,6 @@ import fitz  # for PDF
 import io
 from utils.translator import explain_report
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
