@@ -81,7 +81,7 @@ if st.session_state.mode == "main":
                 report = "\n".join([page.get_text() for page in doc])
         elif filename.endswith((".jpg", ".jpeg", ".png")):
             image = Image.open(uploaded_file)
-            st.image(image, caption="你上傳的圖片", use_column_width=True)
+            st.image(image, caption="你上傳的圖片", use_container_width=True)
             report = pytesseract.image_to_string(image, lang="eng")
 
     st.markdown("---")
@@ -93,7 +93,7 @@ elif st.session_state.mode == "camera":
     st.subheader("📸 拍照上傳模式")
     camera_image = st.camera_input("請使用手機或設備拍照")
     if camera_image:
-        st.image(camera_image, caption="你拍攝的圖片", use_column_width=True)
+        st.image(camera_image, caption="你拍攝的圖片", use_container_width=True)
         image = Image.open(camera_image)
         report = pytesseract.image_to_string(image, lang="eng")
     st.button("⬅️ 返回主頁", on_click=back_to_main)
