@@ -1,41 +1,27 @@
 import os
-import json
 import base64
-import pandas as pd
+import json
+from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 
-# 取得 Google Sheets 憑證
-encoded = os.getenv("GCP_SERVICE_ACCOUNT_ENCODED")
-if not encoded:
-    raise Exception("Missing GCP_SERVICE_ACCOUNT_ENCODED environment variable")
+def log_to_google_sheets(language, report_length):
+    # Step 1: decode base64 secret from GitHub Secret
+    b64_secret = os.environ.get("GOOGLE_SHEET_SECRET_B64")
+    if not b64_secret:
+        raise ValueError("Missing GOOGLE_SHEET_SECRET_B64 environment variable")
 
-credentials_info = json.loads(base64.b64decode(encoded))
-creds = Credentials.from_service_account_info(credentials_info)
-gc = gspread.authorize(creds)
+    service_account_info = json.loads(base64.b64decode(b64_secret))
+    
+    # Step 2: define scopes and credentials
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
 
-# 開啟 Google Sheets（用你的 Sheet 名稱）
-SPREADSHEET_NAME = "RadiAI_Usage_Log"
-try:
-    sh = gc.open(SPREADSHEET_NAME)
-except gspread.exceptions.SpreadsheetNotFound:
-    sh = gc.create(SPREADSHEET_NAME)
-    sh.share('', perm_type='anyone', role='writer')  # 可視情況改為特定 email
+    # Step 3: connect to Google Sheet
+    gc = gspread.authorize(creds)
+    sheet = gc.open_by_key("1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4")  # your Sheet ID
+    worksheet = sheet.worksheet("UsageLog")
 
-worksheet = sh.sheet1
-
-# 讀取本地 log.csv 並寫入 Sheets
-if not os.path.exists("log.csv"):
-    raise FileNotFoundError("log.csv not found")
-
-df = pd.read_csv("log.csv", header=None, names=["timestamp"])
-df["timestamp"] = pd.to_datetime(df["timestamp"])
-df["date"] = df["timestamp"].dt.date
-df["time"] = df["timestamp"].dt.time
-
-# 清空再寫入（簡單方式）
-worksheet.clear()
-worksheet.append_row(["timestamp", "date", "time"])
-
-for index, row in df.iterrows():
-    worksheet.append_row([str(row["timestamp"]), str(row["date"]), str(row["time"])])
+    # Step 4: write new row
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    worksheet.append_row([timestamp, language, str(report_length)])
