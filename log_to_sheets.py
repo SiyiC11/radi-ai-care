@@ -4,6 +4,12 @@ import json
 from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime
+from pytz import timezone
+
+def get_sydney_time():
+    sydney_tz = pytz.timezone("Australia/Sydney")
+    return datetime.now(sydney_tz).isoformat()
 
 def log_to_google_sheets(language, report_length):
     # Step 1: decode base64 secret from GitHub Secret
@@ -24,4 +30,5 @@ def log_to_google_sheets(language, report_length):
 
     # Step 4: write new row
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    worksheet.append_row([timestamp, language, str(report_length)])
+    syd_time = datetime.now(timezone("Australia/Sydney")).strftime("%Y-%m-%d %H:%M:%S")
+    worksheet.append_row([syd_time, language, str(report_length)])
