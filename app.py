@@ -8,6 +8,8 @@ from PIL import Image
 import pytesseract
 import fitz  # for PDF
 import io
+import cv2
+import numpy as np
 from utils.translator import explain_report
 
 load_dotenv()
@@ -93,9 +95,14 @@ elif st.session_state.mode == "camera":
     st.subheader("📸 拍照上傳模式")
     camera_image = st.camera_input("請使用手機或設備拍照")
     if camera_image:
-        image = Image.open(io.BytesIO(camera_image.getvalue()))
-        st.image(image, caption="你拍攝的圖片", use_container_width=True)
-        report = pytesseract.image_to_string(image, lang="eng")
+        img = Image.open(io.BytesIO(camera_image.getvalue()))
+        img_np = np.array(img)
+        gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        processed = Image.fromarray(thresh)
+
+        st.image(processed, caption="處理後圖片", use_container_width=True)
+        report = pytesseract.image_to_string(processed, lang="eng")
     st.button("⬅️ 返回主頁", on_click=back_to_main)
 
 # 手動輸入欄
