@@ -9,3 +9,4 @@ gspread
 oauth2client
 pytz
 google-auth
+opencv-python-headless
