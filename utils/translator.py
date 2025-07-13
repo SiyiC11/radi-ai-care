@@ -10,43 +10,6 @@ class TranslatorError(Exception):
     """Custom exception for translator errors"""
     pass
 
-class PerformanceTracker:
-    """Track performance metrics for translation operations"""
-    
-    def __init__(self):
-        self.start_time = None
-        self.ai_start_time = None
-        self.ai_end_time = None
-        self.end_time = None
-        
-    def start_total(self):
-        """Start tracking total processing time"""
-        self.start_time = time.time()
-        
-    def start_ai(self):
-        """Start tracking AI response time"""
-        self.ai_start_time = time.time()
-        
-    def end_ai(self):
-        """End tracking AI response time"""
-        self.ai_end_time = time.time()
-        
-    def end_total(self):
-        """End tracking total processing time"""
-        self.end_time = time.time()
-        
-    def get_total_time_ms(self) -> int:
-        """Get total processing time in milliseconds"""
-        if self.start_time and self.end_time:
-            return int((self.end_time - self.start_time) * 1000)
-        return 0
-        
-    def get_ai_time_ms(self) -> int:
-        """Get AI response time in milliseconds"""
-        if self.ai_start_time and self.ai_end_time:
-            return int((self.ai_end_time - self.ai_start_time) * 1000)
-        return 0
-
 def validate_report(report: str) -> Tuple[bool, str]:
     """
     Validate if the report contains meaningful content
@@ -118,24 +81,17 @@ def clean_report(report: str) -> str:
     
     return cleaned.strip()
 
-def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: int = 3, 
-                          tracker: Optional[PerformanceTracker] = None) -> Optional[str]:
-    """Create chat completion with retry logic and performance tracking"""
+def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: int = 3) -> Optional[str]:
+    """Create chat completion with retry logic"""
     
     for attempt in range(max_retries):
         try:
-            if tracker:
-                tracker.start_ai()
-            
             response = openai.ChatCompletion.create(
                 model=model,
                 messages=messages,
                 temperature=0.6,
                 max_tokens=2000
             )
-            
-            if tracker:
-                tracker.end_ai()
             
             if response and "choices" in response and len(response["choices"]) > 0:
                 content = response["choices"][0]["message"]["content"]
@@ -146,9 +102,6 @@ def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: i
                     logger.warning(f"Empty response from OpenAI on attempt {attempt + 1}")
             
         except Exception as e:
-            if tracker:
-                tracker.end_ai()
-                
             error_str = str(e).lower()
             
             # Handle rate limiting
@@ -228,30 +181,24 @@ def add_safety_disclaimer(explanation: str, language: str) -> str:
 
 def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
     """
-    Main function to explain radiology report with enhanced tracking
+    Main function to explain radiology report
     
     Args:
         report: The radiology report text
         language: Target language for explanation
         
     Returns:
-        Tuple of (formatted_explanation, performance_metrics)
+        Tuple of (formatted_explanation, simple_metrics)
         
     Raises:
         TranslatorError: If translation fails
     """
-    tracker = PerformanceTracker()
-    tracker.start_total()
+    start_time = time.time()
     
+    # Simple metrics for backward compatibility
     metrics = {
         "success": False,
-        "error_message": None,
-        "validation_result": None,
-        "processing_time_ms": 0,
-        "ai_response_time_ms": 0,
-        "result_length": 0,
-        "report_length": len(report) if report else 0,
-        "cleaned_report_length": 0
+        "error_message": None
     }
     
     try:
@@ -264,10 +211,8 @@ def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
         
         # Clean and validate report
         cleaned_report = clean_report(report)
-        metrics["cleaned_report_length"] = len(cleaned_report)
         
         is_valid, validation_reason = validate_report(cleaned_report)
-        metrics["validation_result"] = validation_reason
         
         if not is_valid:
             # Try to provide a helpful message based on language
@@ -279,8 +224,6 @@ def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
             
             error_message = error_messages.get(language, error_messages["简体中文"])
             metrics["error_message"] = f"Validation failed: {validation_reason}"
-            tracker.end_total()
-            metrics["processing_time_ms"] = tracker.get_total_time_ms()
             
             return f"<p>{error_message}</p>", metrics
         
@@ -293,8 +236,8 @@ def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
             {"role": "user", "content": cleaned_report}
         ]
         
-        # Get explanation from OpenAI with performance tracking
-        explanation = create_chat_completion(messages, tracker=tracker)
+        # Get explanation from OpenAI
+        explanation = create_chat_completion(messages)
         
         if not explanation:
             raise TranslatorError("Failed to generate explanation after multiple attempts")
@@ -307,49 +250,21 @@ def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
         
         # Update metrics
         metrics["success"] = True
-        metrics["result_length"] = len(final_explanation)
-        metrics["ai_response_time_ms"] = tracker.get_ai_time_ms()
         
-        tracker.end_total()
-        metrics["processing_time_ms"] = tracker.get_total_time_ms()
-        
+        processing_time = int((time.time() - start_time) * 1000)
         logger.info(f"Successfully generated explanation for {language} language. "
-                   f"Total time: {metrics['processing_time_ms']}ms, "
-                   f"AI time: {metrics['ai_response_time_ms']}ms")
+                   f"Processing time: {processing_time}ms")
         
         return final_explanation, metrics
         
     except TranslatorError as e:
         metrics["error_message"] = str(e)
-        tracker.end_total()
-        metrics["processing_time_ms"] = tracker.get_total_time_ms()
         logger.error(f"TranslatorError: {e}")
         raise
     except Exception as e:
         metrics["error_message"] = f"Unexpected error: {str(e)}"
-        tracker.end_total()
-        metrics["processing_time_ms"] = tracker.get_total_time_ms()
         logger.error(f"Unexpected error in explain_report: {e}")
         raise TranslatorError(f"Failed to process report: {str(e)}")
-
-# Backwards compatibility - simple version without metrics
-def explain_report_simple(report: str, language: str) -> str:
-    """
-    Simple version for backwards compatibility
-    Returns only the explanation string
-    """
-    try:
-        explanation, _ = explain_report(report, language)
-        return explanation
-    except Exception as e:
-        logger.error(f"Error in explain_report_simple: {e}")
-        # Return basic error message
-        error_messages = {
-            "繁體中文": "❌ 處理報告時發生錯誤，請稍後再試。",
-            "简体中文": "❌ 处理报告时发生错误，请稍后再试。",
-            "English": "❌ An error occurred while processing the report. Please try again."
-        }
-        return error_messages.get(language, error_messages["简体中文"])
 
 def get_report_quality_score(report: str) -> Dict[str, Any]:
     """
@@ -418,21 +333,3 @@ def get_report_quality_score(report: str) -> Dict[str, Any]:
         "issues": issues,
         "suggestions": suggestions
     }
-
-def get_usage_stats() -> Dict[str, Any]:
-    """Get usage statistics (enhanced version)"""
-    try:
-        from log_to_sheets import get_usage_statistics
-        return get_usage_statistics(30) or {}
-    except Exception as e:
-        logger.error(f"Error getting usage stats: {e}")
-        return {
-            "total_requests": 0,
-            "successful_requests": 0,
-            "failed_requests": 0,
-            "average_response_time": 0,
-            "error": str(e)
-        }
-
-# For backwards compatibility, keep the original function name
-explain_report_original = explain_report_simple
