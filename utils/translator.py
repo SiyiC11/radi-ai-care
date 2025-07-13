@@ -47,21 +47,10 @@ def clean_report(report: str) -> str:
     for artifact in artifacts_to_remove:
         cleaned = cleaned.replace(artifact, '')
     
-    # Fix common OCR character substitutions
-    substitutions = {
-        '0': 'o',  # Only in specific contexts
-        '1': 'l',  # Only in specific contexts  
-        '5': 's',  # Only in specific contexts
-        '8': 'B',  # Only in specific contexts
-    }
-    
-    # Apply substitutions carefully to avoid breaking numbers
-    # This is a simplified approach - in practice, you'd want more sophisticated logic
-    
     return cleaned.strip()
 
 def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: int = 3) -> Optional[str]:
-    """Create chat completion with retry logic"""
+    """Create chat completion with retry logic for OpenAI v0.28.1"""
     
     for attempt in range(max_retries):
         try:
@@ -69,8 +58,7 @@ def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: i
                 model=model,
                 messages=messages,
                 temperature=0.6,
-                max_tokens=2000,
-                timeout=30
+                max_tokens=2000
             )
             
             if response and "choices" in response and len(response["choices"]) > 0:
@@ -80,21 +68,32 @@ def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: i
                 else:
                     logger.warning(f"Empty response from OpenAI on attempt {attempt + 1}")
             
-        except openai.error.RateLimitError as e:
-            logger.warning(f"Rate limit exceeded on attempt {attempt + 1}, waiting...")
-            time.sleep(2 ** attempt)  # Exponential backoff
-            
-        except openai.error.APIError as e:
-            logger.error(f"OpenAI API error on attempt {attempt + 1}: {e}")
-            time.sleep(1)
-            
-        except openai.error.Timeout as e:
-            logger.warning(f"Request timeout on attempt {attempt + 1}: {e}")
-            time.sleep(1)
-            
         except Exception as e:
-            logger.error(f"Unexpected error on attempt {attempt + 1}: {e}")
-            time.sleep(1)
+            error_str = str(e).lower()
+            
+            # Handle rate limiting
+            if "rate limit" in error_str or "quota" in error_str:
+                logger.warning(f"Rate limit exceeded on attempt {attempt + 1}, waiting...")
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+                
+            # Handle API errors
+            elif "api" in error_str or "invalid" in error_str:
+                logger.error(f"OpenAI API error on attempt {attempt + 1}: {e}")
+                time.sleep(1)
+                continue
+                
+            # Handle timeout
+            elif "timeout" in error_str or "connection" in error_str:
+                logger.warning(f"Request timeout on attempt {attempt + 1}: {e}")
+                time.sleep(1)
+                continue
+                
+            # Handle other errors
+            else:
+                logger.error(f"Unexpected error on attempt {attempt + 1}: {e}")
+                time.sleep(1)
+                continue
     
     return None
 
