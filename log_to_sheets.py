@@ -9,17 +9,19 @@ import logging
 from typing import Optional
 import hashlib
 import time
+import uuid
 
 logger = logging.getLogger(__name__)
 
 class SimpleLogger:
-    """Simple Google Sheets logger with minimal fields"""
+    """Simple Google Sheets logger with improved session tracking"""
     
     def __init__(self):
         self.client = None
         self.worksheet = None
         self.initialized = False
         self.sheet_id = "1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4"
+        self._session_id = None  # Store session ID for reuse
         
     def _initialize_client(self) -> bool:
         """Initialize Google Sheets client"""
@@ -49,7 +51,7 @@ class SimpleLogger:
                 self.worksheet = sheet.worksheet("UsageLog")
             except gspread.WorksheetNotFound:
                 logger.info("UsageLog worksheet not found, creating new one")
-                self.worksheet = sheet.add_worksheet(title="UsageLog", rows="1000", cols="6")
+                self.worksheet = sheet.add_worksheet(title="UsageLog", rows="1000", cols="7")
                 self._initialize_headers()
             
             self.initialized = True
@@ -61,18 +63,20 @@ class SimpleLogger:
             return False
     
     def _initialize_headers(self):
-        """Initialize worksheet headers with simple fields"""
+        """Initialize worksheet headers with improved fields"""
         headers = [
             "Date & Time",
             "Language", 
             "Report Length",
             "File Type",
-            "Session ID"
+            "Session ID",
+            "User ID",
+            "Processing Status"
         ]
         try:
             self.worksheet.append_row(headers)
             # Format header row
-            self.worksheet.format('A1:E1', {
+            self.worksheet.format('A1:G1', {
                 "backgroundColor": {"red": 0.2, "green": 0.6, "blue": 0.9},
                 "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}
             })
@@ -89,25 +93,38 @@ class SimpleLogger:
             logger.error(f"Error getting Sydney time: {e}")
             return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    def _create_session_id(self) -> str:
-        """Create unique session identifier"""
+    def _get_session_id(self) -> str:
+        """Get or create session ID that persists for the current app session"""
+        if self._session_id is None:
+            # Create a session ID that will be reused for this app instance
+            self._session_id = str(uuid.uuid4())[:8]
+            logger.info(f"Created new session ID: {self._session_id}")
+        
+        return self._session_id
+    
+    def _create_user_id(self) -> str:
+        """Create a simple user identifier based on timestamp + random"""
         try:
+            # Create a more unique user identifier
             timestamp = str(int(time.time()))
-            return hashlib.md5(timestamp.encode()).hexdigest()[:8]
+            random_part = str(uuid.uuid4())[:4]
+            return f"user_{timestamp[-4:]}_{random_part}"
         except Exception:
-            return "unknown"
+            return "anonymous"
     
     def log_usage(self, 
                   language: str,
                   report_length: int,
-                  file_type: str = "manual") -> bool:
+                  file_type: str = "manual",
+                  processing_status: str = "success") -> bool:
         """
-        Log simple usage data to Google Sheets
+        Log usage data to Google Sheets with improved session tracking
         
         Args:
             language: Language used for translation
             report_length: Length of the input report
-            file_type: Type of file processed (text, image, pdf, manual)
+            file_type: Type of file processed (txt, pdf, jpg, png, manual, unknown)
+            processing_status: Status of processing (success, error, validation_failed)
             
         Returns:
             bool: True if logging successful, False otherwise
@@ -118,22 +135,26 @@ class SimpleLogger:
                 if not self._initialize_client():
                     return False
             
-            # Prepare simple row data
+            # Prepare row data with improved tracking
             current_datetime = self._get_sydney_datetime()
-            session_id = self._create_session_id()
+            session_id = self._get_session_id()  # Reuses same ID for this session
+            user_id = self._create_user_id()     # Unique per interaction
             
             row_data = [
                 current_datetime,    # Date & Time
                 language,           # Language
-                report_length,      # Report Length
-                file_type,          # File Type
-                session_id          # Session ID
+                report_length,      # Report Length  
+                file_type,          # File Type (pdf, jpg, txt, png, manual, unknown)
+                session_id,         # Session ID (same for this app session)
+                user_id,            # User ID (unique per interaction)
+                processing_status   # Processing Status (success, error, etc.)
             ]
             
             # Log to worksheet
             self.worksheet.append_row(row_data)
             
-            logger.info(f"Successfully logged usage: {language}, {report_length} chars, {file_type}")
+            logger.info(f"Successfully logged usage: {language}, {report_length} chars, "
+                       f"{file_type}, session: {session_id}, status: {processing_status}")
             return True
             
         except Exception as e:
@@ -146,14 +167,16 @@ _simple_logger = SimpleLogger()
 def log_to_google_sheets(language: str, 
                         report_length: int, 
                         file_type: str = "manual",
+                        processing_status: str = "success",
                         **kwargs) -> bool:
     """
-    Simple convenience function to log usage data to Google Sheets
+    Convenience function to log usage data to Google Sheets
     
     Args:
         language: Language used for translation
         report_length: Length of the input report
-        file_type: Type of file processed (text, image, pdf, manual)
+        file_type: Type of file processed (txt, pdf, jpg, png, manual, unknown)
+        processing_status: Status of processing (success, error, validation_failed)
         **kwargs: Additional arguments (ignored for simplicity)
         
     Returns:
@@ -162,5 +185,6 @@ def log_to_google_sheets(language: str,
     return _simple_logger.log_usage(
         language=language,
         report_length=report_length,
-        file_type=file_type
+        file_type=file_type,
+        processing_status=processing_status
     )
