@@ -1,9 +1,9 @@
 import os
 import base64
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 import pytz
 import logging
 from typing import Optional, Dict, Any
@@ -32,12 +32,12 @@ class SheetsLogger:
             # Decode and parse service account info
             service_account_info = json.loads(base64.b64decode(b64_secret))
             
-            # Define scopes and create credentials
+            # Define scopes and create credentials (using oauth2client for compatibility)
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive.readonly"
             ]
-            creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, scopes)
 
             # Initialize client and get worksheet
             self.client = gspread.authorize(creds)
