@@ -331,6 +331,17 @@ def display_main_mode():
                     st.text_area("", value=report, height=150, disabled=True)
             else:
                 st.error(lang_config["error_ocr"])
+                # Log OCR failure
+                try:
+                    from log_to_sheets import log_to_google_sheets
+                    log_to_google_sheets(
+                        language=st.session_state.language,
+                        report_length=0,
+                        file_type=current_file_type,
+                        processing_status="ocr_failed"
+                    )
+                except Exception as log_error:
+                    logger.warning(f"Failed to log OCR failure: {log_error}")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -362,6 +373,17 @@ def display_main_mode():
                 type="primary", use_container_width=True):
         if not report.strip():
             st.error(lang_config["error_no_content"])
+            # Log empty content attempt
+            try:
+                from log_to_sheets import log_to_google_sheets
+                log_to_google_sheets(
+                    language=st.session_state.language,
+                    report_length=0,
+                    file_type=current_file_type,
+                    processing_status="empty_content"
+                )
+            except Exception as log_error:
+                logger.warning(f"Failed to log empty content: {log_error}")
         else:
             logger.info(f"Generating explanation - File type: {current_file_type}")
             generate_explanation(report, current_file_type)
@@ -369,50 +391,70 @@ def display_main_mode():
 def generate_explanation(report: str, file_type: str = "manual"):
     """Generate AI explanation for the report"""
     lang_config = LANGUAGES[st.session_state.language]
+    processing_status = "error"  # Default to error, update on success
     
     try:
         with st.spinner(lang_config["processing"]):
             # Call the explain_report function
             result, metrics = explain_report(report, st.session_state.language)
             
-            # Display the result
-            st.markdown('<div class="result-container">', unsafe_allow_html=True)
-            st.markdown(result, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Determine processing status based on metrics
+            if metrics.get("success", False):
+                processing_status = "success"
+                
+                # Display the result
+                st.markdown('<div class="result-container">', unsafe_allow_html=True)
+                st.markdown(result, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+            else:
+                # Check if it was a validation error
+                error_msg = metrics.get("error_message", "")
+                if "validation" in error_msg.lower():
+                    processing_status = "validation_failed"
+                else:
+                    processing_status = "ai_error"
+                
+                # Still display the result (which should contain error message)
+                st.markdown('<div class="result-container">', unsafe_allow_html=True)
+                st.markdown(result, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            # Log usage with proper file type
+            # Log usage with proper status
             try:
                 from log_to_sheets import log_to_google_sheets
                 success = log_to_google_sheets(
                     language=st.session_state.language,
                     report_length=len(report),
-                    file_type=file_type
+                    file_type=file_type,
+                    processing_status=processing_status
                 )
                 
                 if success:
                     logger.info(f"Successfully logged usage - Language: {st.session_state.language}, "
-                              f"Length: {len(report)}, File type: {file_type}")
+                              f"Length: {len(report)}, File type: {file_type}, Status: {processing_status}")
                 else:
-                    logger.warning(f"Failed to log usage - File type: {file_type}")
+                    logger.warning(f"Failed to log usage - File type: {file_type}, Status: {processing_status}")
                     
             except Exception as log_error:
-                # Log error but don't show to user
                 logger.warning(f"Failed to log usage: {log_error}")
             
     except Exception as e:
         logger.error(f"Generation error: {e}")
+        processing_status = "system_error"
         st.error(f"{lang_config['error_processing']}{str(e)}")
         
-        # Log failed attempt with file type
+        # Log system error
         try:
             from log_to_sheets import log_to_google_sheets
             log_to_google_sheets(
                 language=st.session_state.language,
                 report_length=len(report),
-                file_type=file_type
+                file_type=file_type,
+                processing_status=processing_status
             )
         except Exception as log_error:
-            logger.warning(f"Failed to log error: {log_error}")
+            logger.warning(f"Failed to log system error: {log_error}")
 
 def main():
     """Main application function"""
