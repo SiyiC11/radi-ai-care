@@ -148,6 +148,10 @@ def initialize_session_state():
     """Initialize session state variables"""
     if "language" not in st.session_state:
         st.session_state.language = "简体中文"
+    if "last_file_type" not in st.session_state:
+        st.session_state.last_file_type = "manual"
+    if "uploaded_content" not in st.session_state:
+        st.session_state.uploaded_content = ""
 
 def preprocess_image(image: Image.Image) -> Image.Image:
     """Preprocess image for better OCR results"""
@@ -202,39 +206,49 @@ def extract_text_from_image(image: Image.Image) -> str:
         logger.error(f"OCR error: {e}")
         return ""
 
+def get_file_extension(filename: str) -> str:
+    """Get file extension from filename"""
+    return filename.lower().split('.')[-1] if '.' in filename else 'unknown'
+
 def determine_file_type(filename: str) -> str:
-    """Determine file type from filename"""
-    filename_lower = filename.lower()
-    if filename_lower.endswith('.pdf'):
-        return 'pdf'
-    elif filename_lower.endswith(('.jpg', '.jpeg', '.png')):
-        return 'image'
-    elif filename_lower.endswith('.txt'):
-        return 'text'
-    else:
-        return 'unknown'
+    """Determine standardized file type from filename"""
+    extension = get_file_extension(filename)
+    
+    # Map extensions to standardized types
+    extension_mapping = {
+        'pdf': 'pdf',
+        'txt': 'txt',
+        'jpg': 'jpg',
+        'jpeg': 'jpg',  # Normalize jpeg to jpg
+        'png': 'png'
+    }
+    
+    return extension_mapping.get(extension, 'unknown')
 
 def process_uploaded_file(uploaded_file) -> Tuple[str, Optional[Image.Image], str]:
     """Process uploaded file and extract text"""
     try:
         file_bytes = uploaded_file.read()
-        filename = uploaded_file.name.lower()
-        file_type = determine_file_type(uploaded_file.name)
+        filename = uploaded_file.name
+        file_type = determine_file_type(filename)
         
-        if filename.endswith(".txt"):
+        logger.info(f"Processing file: {filename}, detected type: {file_type}")
+        
+        if file_type == "txt":
             text = file_bytes.decode("utf-8")
             return text, None, file_type
                 
-        elif filename.endswith(".pdf"):
+        elif file_type == "pdf":
             with fitz.open(stream=file_bytes, filetype="pdf") as doc:
                 text = "\n".join([page.get_text() for page in doc])
                 return text, None, file_type
                 
-        elif filename.endswith((".jpg", ".jpeg", ".png")):
+        elif file_type in ["jpg", "png"]:
             image = Image.open(io.BytesIO(file_bytes))
             text = extract_text_from_image(image)
             return text, image, file_type
         else:
+            logger.warning(f"Unknown file type: {file_type} for file: {filename}")
             return "", None, "unknown"
             
     except Exception as e:
@@ -283,7 +297,7 @@ def display_main_mode():
     lang_config = LANGUAGES[st.session_state.language]
     report = ""
     uploaded_image = None
-    file_type = "manual"
+    current_file_type = "manual"  # Default to manual
     
     # File upload section
     st.markdown(f'<div class="upload-area">', unsafe_allow_html=True)
@@ -297,7 +311,13 @@ def display_main_mode():
     
     if uploaded_file:
         with st.spinner(lang_config["processing"]):
-            report, uploaded_image, file_type = process_uploaded_file(uploaded_file)
+            report, uploaded_image, current_file_type = process_uploaded_file(uploaded_file)
+            
+            # Store the file type and content in session state
+            st.session_state.last_file_type = current_file_type
+            st.session_state.uploaded_content = report
+            
+            logger.info(f"File processed - Type: {current_file_type}, Content length: {len(report)}")
             
             if uploaded_image:
                 st.image(uploaded_image, caption=lang_config["uploaded_image"], 
@@ -320,9 +340,22 @@ def display_main_mode():
     manual_input = st.text_area("", value=report, height=200, key="manual_input", 
                                placeholder="Paste your radiology report here...")
     
-    if manual_input:
+    # Determine final file type and content
+    if manual_input.strip():
+        # Check if manual input is different from uploaded content
+        if manual_input.strip() != st.session_state.uploaded_content.strip():
+            current_file_type = "manual"
+        else:
+            # User is using uploaded content, keep the original file type
+            current_file_type = st.session_state.last_file_type
+        
         report = manual_input
-        file_type = "manual"
+    elif uploaded_file and report.strip():
+        # Only uploaded file content, no manual input
+        current_file_type = st.session_state.last_file_type
+    else:
+        # No content
+        current_file_type = "manual"
     
     # Generate explanation button
     if st.button(f"{lang_config['generate_button']}", key="generate_btn", 
@@ -330,7 +363,8 @@ def display_main_mode():
         if not report.strip():
             st.error(lang_config["error_no_content"])
         else:
-            generate_explanation(report, file_type)
+            logger.info(f"Generating explanation - File type: {current_file_type}")
+            generate_explanation(report, current_file_type)
 
 def generate_explanation(report: str, file_type: str = "manual"):
     """Generate AI explanation for the report"""
@@ -346,14 +380,21 @@ def generate_explanation(report: str, file_type: str = "manual"):
             st.markdown(result, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
-            # Log usage silently (no UI feedback)
+            # Log usage with proper file type
             try:
                 from log_to_sheets import log_to_google_sheets
-                log_to_google_sheets(
+                success = log_to_google_sheets(
                     language=st.session_state.language,
                     report_length=len(report),
                     file_type=file_type
                 )
+                
+                if success:
+                    logger.info(f"Successfully logged usage - Language: {st.session_state.language}, "
+                              f"Length: {len(report)}, File type: {file_type}")
+                else:
+                    logger.warning(f"Failed to log usage - File type: {file_type}")
+                    
             except Exception as log_error:
                 # Log error but don't show to user
                 logger.warning(f"Failed to log usage: {log_error}")
@@ -362,7 +403,7 @@ def generate_explanation(report: str, file_type: str = "manual"):
         logger.error(f"Generation error: {e}")
         st.error(f"{lang_config['error_processing']}{str(e)}")
         
-        # Log failed attempt silently
+        # Log failed attempt with file type
         try:
             from log_to_sheets import log_to_google_sheets
             log_to_google_sheets(
