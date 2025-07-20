@@ -1,7 +1,6 @@
-# log_to_sheets.py
 """
-Google Sheets 數據記錄模塊
-用於記錄 RadiAI.Care 的使用統計數據
+RadiAI.Care Google Sheets 數據記錄模塊
+優化版本，支援使用記錄和回饋記錄
 """
 
 import os
@@ -12,7 +11,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pytz
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 import uuid
 import time
 
@@ -20,11 +19,12 @@ import time
 logger = logging.getLogger(__name__)
 
 class GoogleSheetsLogger:
-    """Google Sheets 數據記錄器"""
+    """Google Sheets 數據記錄器（增強版）"""
     
     def __init__(self):
         self.client = None
-        self.worksheet = None
+        self.usage_worksheet = None
+        self.feedback_worksheet = None
         self.initialized = False
         self.sheet_id = "1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4"
         self._session_id = None
@@ -58,15 +58,25 @@ class GoogleSheetsLogger:
             self.client = gspread.authorize(creds)
             sheet = self.client.open_by_key(self.sheet_id)
             
-            # 初始化工作表
+            # 初始化使用記錄工作表
             try:
-                self.worksheet = sheet.worksheet("UsageLog")
+                self.usage_worksheet = sheet.worksheet("UsageLog")
             except gspread.WorksheetNotFound:
                 logger.info("UsageLog 工作表未找到，正在創建新工作表")
-                self.worksheet = sheet.add_worksheet(
-                    title="UsageLog", rows="1000", cols="8"
+                self.usage_worksheet = sheet.add_worksheet(
+                    title="UsageLog", rows="1000", cols="12"
                 )
-                self._initialize_headers()
+                self._initialize_usage_headers()
+            
+            # 初始化回饋工作表
+            try:
+                self.feedback_worksheet = sheet.worksheet("Feedback")
+            except gspread.WorksheetNotFound:
+                logger.info("Feedback 工作表未找到，正在創建新工作表")
+                self.feedback_worksheet = sheet.add_worksheet(
+                    title="Feedback", rows="1000", cols="20"
+                )
+                self._initialize_feedback_headers()
             
             self.initialized = True
             logger.info("Google Sheets 客戶端初始化成功")
@@ -76,22 +86,66 @@ class GoogleSheetsLogger:
             logger.error(f"初始化 Google Sheets 客戶端失敗: {e}")
             return False
     
-    def _initialize_headers(self):
-        """初始化工作表標題行"""
+    def _initialize_usage_headers(self):
+        """初始化使用記錄工作表標題行"""
         headers = [
             "Date & Time",
-            "Language", 
-            "Report Length",
+            "Language",
+            "Report Length", 
             "File Type",
             "Session ID",
             "User ID",
             "Processing Status",
-            "Processing Time (ms)"
+            "Processing Time (ms)",
+            "Translation ID",
+            "Medical Terms Count",
+            "Confidence Score",
+            "App Version"
         ]
         try:
-            self.worksheet.append_row(headers)
-            # 格式化標題行
-            self.worksheet.format('A1:H1', {
+            self.usage_worksheet.append_row(headers)
+            self._format_header_row(self.usage_worksheet, len(headers))
+            logger.info("使用記錄工作表標題行初始化完成")
+        except Exception as e:
+            logger.error(f"初始化使用記錄標題行失敗: {e}")
+    
+    def _initialize_feedback_headers(self):
+        """初始化回饋工作表標題行"""
+        headers = [
+            "Date & Time",
+            "Translation ID",
+            "Language",
+            "Feedback Type",
+            "Sentiment",
+            "Clarity Score",
+            "Usefulness Score", 
+            "Accuracy Score",
+            "Recommendation Score",
+            "Overall Satisfaction",
+            "Issues",
+            "Suggestion",
+            "Email",
+            "Report Length",
+            "File Type",
+            "Medical Terms Count",
+            "Confidence Score",
+            "Session ID",
+            "User ID",
+            "App Version"
+        ]
+        try:
+            self.feedback_worksheet.append_row(headers)
+            self._format_header_row(self.feedback_worksheet, len(headers))
+            logger.info("回饋工作表標題行初始化完成")
+        except Exception as e:
+            logger.error(f"初始化回饋標題行失敗: {e}")
+    
+    def _format_header_row(self, worksheet, col_count: int):
+        """格式化標題行"""
+        try:
+            # 設置標題行格式
+            cell_range = f"A1:{chr(64 + col_count)}1"
+            worksheet.format(cell_range, {
                 "backgroundColor": {
                     "red": 0.2, "green": 0.6, "blue": 0.9
                 },
@@ -102,9 +156,8 @@ class GoogleSheetsLogger:
                     }
                 }
             })
-            logger.info("工作表標題行初始化完成")
         except Exception as e:
-            logger.error(f"初始化標題行失敗: {e}")
+            logger.warning(f"格式化標題行失敗: {e}")
     
     def _get_sydney_datetime(self) -> str:
         """獲取悉尼時區的當前日期時間"""
@@ -131,21 +184,12 @@ class GoogleSheetsLogger:
         except Exception:
             return "anonymous_user"
     
-    def log_usage(self, 
-                  language: str,
-                  report_length: int,
-                  file_type: str = "manual",
-                  processing_status: str = "success",
-                  processing_time_ms: int = 0) -> bool:
+    def log_usage(self, **kwargs) -> bool:
         """
         記錄使用情況到 Google Sheets
         
         Args:
-            language: 使用的語言
-            report_length: 報告長度
-            file_type: 文件類型 (txt, pdf, docx, manual, unknown)
-            processing_status: 處理狀態 (success, error, validation_failed)
-            processing_time_ms: 處理時間（毫秒）
+            **kwargs: 使用記錄數據
             
         Returns:
             bool: 記錄是否成功
@@ -162,60 +206,129 @@ class GoogleSheetsLogger:
             user_id = self._create_user_id()
             
             row_data = [
-                current_datetime,        # Date & Time
-                language,               # Language
-                report_length,          # Report Length  
-                file_type,              # File Type
-                session_id,             # Session ID
-                user_id,                # User ID
-                processing_status,      # Processing Status
-                processing_time_ms      # Processing Time (ms)
+                current_datetime,                                    # Date & Time
+                kwargs.get('language', ''),                        # Language
+                kwargs.get('report_length', 0),                    # Report Length
+                kwargs.get('file_type', 'manual'),                 # File Type
+                session_id,                                         # Session ID
+                user_id,                                           # User ID
+                kwargs.get('processing_status', 'unknown'),        # Processing Status
+                kwargs.get('latency_ms', 0),                       # Processing Time (ms)
+                kwargs.get('translation_id', ''),                  # Translation ID
+                kwargs.get('medical_terms_count', 0),              # Medical Terms Count
+                kwargs.get('confidence_score', 0),                 # Confidence Score
+                kwargs.get('app_version', 'unknown')               # App Version
             ]
             
             # 記錄到工作表
-            self.worksheet.append_row(row_data)
+            self.usage_worksheet.append_row(row_data)
             
-            logger.info(
-                f"成功記錄使用情況: {language}, "
-                f"{report_length} chars, {file_type}, "
-                f"session: {session_id}, status: {processing_status}"
-            )
+            logger.info(f"成功記錄使用情況: {kwargs.get('language')}, {kwargs.get('processing_status')}")
             return True
             
         except Exception as e:
             logger.error(f"記錄使用情況失敗: {e}")
             return False
+    
+    def log_feedback(self, **kwargs) -> bool:
+        """
+        記錄回饋到 Google Sheets
+        
+        Args:
+            **kwargs: 回饋數據
+            
+        Returns:
+            bool: 記錄是否成功
+        """
+        try:
+            # 如果需要，初始化客戶端
+            if not self.initialized:
+                if not self._initialize_client():
+                    return False
+            
+            # 準備行數據
+            current_datetime = self._get_sydney_datetime()
+            session_id = self._get_session_id()
+            user_id = self._create_user_id()
+            
+            row_data = [
+                current_datetime,                                    # Date & Time
+                kwargs.get('translation_id', ''),                  # Translation ID
+                kwargs.get('language', ''),                        # Language
+                kwargs.get('feedback_type', 'unknown'),            # Feedback Type
+                kwargs.get('sentiment', ''),                       # Sentiment
+                kwargs.get('clarity_score', 0),                    # Clarity Score
+                kwargs.get('usefulness_score', 0),                 # Usefulness Score
+                kwargs.get('accuracy_score', 0),                   # Accuracy Score
+                kwargs.get('recommendation_score', 0),             # Recommendation Score
+                kwargs.get('overall_satisfaction', 0),             # Overall Satisfaction
+                kwargs.get('issues', ''),                          # Issues
+                kwargs.get('suggestion', ''),                      # Suggestion
+                kwargs.get('email', ''),                           # Email
+                kwargs.get('report_length', 0),                    # Report Length
+                kwargs.get('file_type', 'manual'),                 # File Type
+                kwargs.get('medical_terms_detected', 0),           # Medical Terms Count
+                kwargs.get('confidence_score', 0),                 # Confidence Score
+                session_id,                                         # Session ID
+                user_id,                                           # User ID
+                kwargs.get('app_version', 'unknown')               # App Version
+            ]
+            
+            # 記錄到回饋工作表
+            self.feedback_worksheet.append_row(row_data)
+            
+            logger.info(f"成功記錄回饋: {kwargs.get('translation_id')}, {kwargs.get('feedback_type')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"記錄回饋失敗: {e}")
+            return False
 
 # 全局實例
 _sheets_logger = GoogleSheetsLogger()
 
-def log_to_google_sheets(language: str, 
-                        report_length: int, 
-                        file_type: str = "manual",
-                        processing_status: str = "success",
-                        processing_time_ms: int = 0,
-                        **kwargs) -> bool:
+def log_to_google_sheets(**kwargs) -> bool:
     """
-    便捷函數：記錄使用數據到 Google Sheets
+    統一的記錄函數，根據 processing_status 決定記錄類型
     
     Args:
-        language: 使用的語言
-        report_length: 報告長度
-        file_type: 文件類型 (txt, pdf, docx, manual, unknown)
-        processing_status: 處理狀態 (success, error, validation_failed)
-        processing_time_ms: 處理時間（毫秒）
-        **kwargs: 其他參數（為了兼容性，被忽略）
+        **kwargs: 記錄數據
         
     Returns:
         bool: 記錄是否成功
     """
-    return _sheets_logger.log_usage(
-        language=language,
-        report_length=report_length,
-        file_type=file_type,
-        processing_status=processing_status,
-        processing_time_ms=processing_time_ms
-    )
+    processing_status = kwargs.get('processing_status', '')
+    
+    if processing_status == 'feedback':
+        # 記錄回饋數據
+        return _sheets_logger.log_feedback(**kwargs)
+    else:
+        # 記錄使用數據
+        return _sheets_logger.log_usage(**kwargs)
+
+def log_usage_to_sheets(**kwargs) -> bool:
+    """
+    專門記錄使用情況的函數
+    
+    Args:
+        **kwargs: 使用記錄數據
+        
+    Returns:
+        bool: 記錄是否成功
+    """
+    return _sheets_logger.log_usage(**kwargs)
+
+def log_feedback_to_sheets(**kwargs) -> bool:
+    """
+    專門記錄回饋的函數
+    
+    Args:
+        **kwargs: 回饋數據
+        
+    Returns:
+        bool: 記錄是否成功
+    """
+    return _sheets_logger.log_feedback(**kwargs)
 
 def get_session_id() -> str:
     """獲取當前會話ID"""
@@ -226,8 +339,8 @@ def reset_session() -> None:
     _sheets_logger._session_id = None
     logger.info("會話ID已重置")
 
-class UsageMetrics:
-    """使用統計指標類"""
+class AnalyticsHelper:
+    """分析輔助工具"""
     
     @staticmethod
     def calculate_processing_time(start_time: float) -> int:
@@ -279,24 +392,60 @@ class UsageMetrics:
             return len(report_text) if report_text else 0
         except Exception:
             return 0
+    
+    @staticmethod
+    def create_analytics_summary(**kwargs) -> Dict[str, Any]:
+        """
+        創建分析摘要
+        
+        Args:
+            **kwargs: 分析數據
+            
+        Returns:
+            Dict: 分析摘要
+        """
+        return {
+            'timestamp': datetime.now().isoformat(),
+            'session_id': get_session_id(),
+            'metrics': kwargs
+        }
 
-# 使用示例和測試函數
+# 測試函數
 def test_logging():
     """測試日誌記錄功能"""
     try:
-        # 測試記錄
-        success = log_to_google_sheets(
+        # 測試使用記錄
+        usage_success = log_usage_to_sheets(
             language="简体中文",
             report_length=1500,
             file_type="pdf",
             processing_status="success",
-            processing_time_ms=2500
+            latency_ms=2500,
+            translation_id=str(uuid.uuid4()),
+            medical_terms_count=5,
+            confidence_score=0.85,
+            app_version="v4.2-test"
         )
         
-        if success:
-            print("✅ 測試記錄成功")
+        # 測試回饋記錄
+        feedback_success = log_feedback_to_sheets(
+            translation_id=str(uuid.uuid4()),
+            language="简体中文",
+            feedback_type="detailed",
+            clarity_score=4,
+            usefulness_score=5,
+            accuracy_score=4,
+            recommendation_score=8,
+            overall_satisfaction=4.3,
+            issues="無問題",
+            suggestion="很好用",
+            app_version="v4.2-test"
+        )
+        
+        if usage_success and feedback_success:
+            print("✅ 所有測試記錄成功")
         else:
-            print("❌ 測試記錄失敗")
+            print(f"❌ 測試記錄部分失敗 - 使用記錄: {usage_success}, 回饋記錄: {feedback_success}")
             
     except Exception as e:
         print(f"❌ 測試過程中發生錯誤: {e}")
