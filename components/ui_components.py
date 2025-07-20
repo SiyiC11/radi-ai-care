@@ -72,33 +72,68 @@ class UIComponents:
                 st.session_state.language = "简体中文"
                 st.rerun()
     
-    def render_disclaimer(self, lang: Dict):
-        """渲染法律聲明（使用 Streamlit 原生組件）"""
-        
-        # 創建警告框標題
-        st.warning(f"⚠️ **{lang['disclaimer_title']}**")
-        
-        # 使用 expander 來組織內容，提供更好的用戶體驗
-        with st.expander("📋 點擊查看完整法律聲明", expanded=True):
-            # 使用列來美化佈局
-            col1, col2 = st.columns([1, 20])
-            
-            with col2:
-                for i, item in enumerate(lang["disclaimer_items"], 1):
-                    # 使用 info 框來突出每個聲明項目
-                    st.info(f"**📌 {i}.** {item}")
-            
-            # 添加底部重要提醒
-            st.success("🔒 **重要提醒**: 您的健康和安全是我們最關心的事項，請務必遵循以上指導原則。")
-            
-            # 添加聯繫資訊
-            st.markdown("""
-            ---
-            **🆘 緊急情況處理：**
-            - 🚨 **緊急醫療**: 立即撥打 **000**
-            - 🏥 **就醫建議**: 前往最近的急診室
-            - 👨‍⚕️ **專業諮詢**: 聯繫您的家庭醫師 (GP)
-            """)
+def render_disclaimer(self, lang: Dict):
+    """渲染法律聲明（永遠顯示，無折疊）"""
+
+    # 標題 + 警示
+    st.markdown(f"""
+    <div style="
+        background-color: #fff3cd;
+        border-left: 6px solid #ff9800;
+        padding: 1.2rem;
+        border-radius: 8px;
+        margin-top: 1.5rem;
+        box-shadow: 0 2px 8px rgba(255,152,0,0.1);
+    ">
+        <div style="font-weight: bold; font-size: 1.1rem; color: #bf360c;">
+            ⚠️ {lang['disclaimer_title']}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 法律聲明條款逐條顯示
+    for i, item in enumerate(lang["disclaimer_items"], 1):
+        st.markdown(f"""
+        <div style="
+            margin: 0.8rem 0;
+            padding: 1rem 1.2rem;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            border-left: 5px solid #ff9800;
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: #d84315;
+            font-weight: 500;
+        ">
+            <strong style="color: #bf360c;">📌 {i}.</strong> {item}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 底部提醒與緊急資訊
+    st.markdown("""
+    <div style="
+        text-align: center;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: rgba(255, 193, 7, 0.1);
+        border-radius: 8px;
+        font-style: italic;
+        color: #f57c00;
+        font-weight: 600;
+        border: 1px dashed #ff9800;
+    ">
+        🔒 您的健康和安全是我們最關心的事項，請務必遵循以上指導原則。
+    </div>
+
+    <div style="margin-top: 1rem;">
+        <hr>
+        <strong>🆘 緊急情況處理：</strong><br>
+        🚨 <strong>緊急醫療</strong>：立即撥打 <strong>000</strong><br>
+        🏥 <strong>就醫建議</strong>：前往最近的急診室<br>
+        👨‍⚕️ <strong>專業諮詢</strong>：聯繫您的家庭醫師 (GP)
+    </div>
+    """, unsafe_allow_html=True)
     
     def render_disclaimer_alternative(self, lang: Dict):
         """渲染法律聲明（備用 HTML 版本）"""
