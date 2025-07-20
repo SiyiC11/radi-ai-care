@@ -1,335 +1,538 @@
+# utils/translator.py
+"""
+RadiAI.Care 翻譯引擎
+提供專業的醫學報告翻譯和內容驗證功能
+"""
+
 import openai
 import time
 import logging
-from typing import Optional, Dict, Any, Tuple
-from utils.prompt_template import get_prompt
+from typing import Optional, Dict, Any, Tuple, List
+import re
+import json
+from dataclasses import dataclass
+from enum import Enum
 
+# 設置日誌
 logger = logging.getLogger(__name__)
 
-class TranslatorError(Exception):
-    """Custom exception for translator errors"""
-    pass
+class TranslationQuality(Enum):
+    """翻譯質量等級"""
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    ACCEPTABLE = "acceptable"
+    POOR = "poor"
+    FAILED = "failed"
 
-def validate_report(report: str) -> Tuple[bool, str]:
-    """
-    Validate if the report contains meaningful content
-    
-    Returns:
-        Tuple of (is_valid, reason)
-    """
-    if not report or not report.strip():
-        return False, "Empty report"
-    
-    # Check if report is too short (likely OCR error)
-    if len(report.strip()) < 10:
-        return False, "Report too short (< 10 characters)"
-    
-    # Check if report contains some medical-related keywords
-    medical_keywords = [
-        'scan', 'image', 'finding', 'examination', 'study', 'patient',
-        'impression', 'conclusion', 'recommendation', 'normal', 'abnormal',
-        'radiology', 'ct', 'mri', 'xray', 'x-ray', 'ultrasound', 'report',
-        'chest', 'abdomen', 'brain', 'spine', 'bone', 'lung', 'heart',
-        'liver', 'kidney', 'pelvis', 'head', 'neck', 'contrast', 'without'
-    ]
-    
-    report_lower = report.lower()
-    matching_keywords = [kw for kw in medical_keywords if kw in report_lower]
-    
-    if not matching_keywords:
-        return False, "No medical terminology detected"
-    
-    # Check for minimum word count
-    word_count = len(report.split())
-    if word_count < 5:
-        return False, f"Too few words ({word_count})"
-    
-    # Check if it's mostly numbers or special characters
-    text_chars = sum(1 for c in report if c.isalpha())
-    total_chars = len(report.replace(' ', ''))
-    
-    if total_chars > 0 and text_chars / total_chars < 0.3:
-        return False, "Content appears to be mostly non-text"
-    
-    return True, f"Valid report with {len(matching_keywords)} medical terms"
+class ContentType(Enum):
+    """內容類型"""
+    RADIOLOGY_REPORT = "radiology_report"
+    MEDICAL_DOCUMENT = "medical_document"
+    GENERAL_TEXT = "general_text"
+    INVALID = "invalid"
 
-def clean_report(report: str) -> str:
-    """Clean and preprocess the report text"""
-    if not report:
-        return ""
+@dataclass
+class TranslationResult:
+    """翻譯結果數據類"""
+    success: bool
+    translated_text: str
+    quality_score: int
+    quality_level: TranslationQuality
+    processing_time_ms: int
+    word_count: int
+    medical_terms_found: List[str]
+    warnings: List[str]
+    errors: List[str]
+    metadata: Dict[str, Any]
+
+@dataclass
+class ValidationResult:
+    """內容驗證結果數據類"""
+    is_valid: bool
+    content_type: ContentType
+    confidence_score: float
+    issues: List[str]
+    suggestions: List[str]
+    medical_terms: List[str]
+    structure_score: int
+    readability_score: int
+
+class MedicalTermsDatabase:
+    """醫學術語數據庫"""
     
-    # Remove excessive whitespace
-    cleaned = ' '.join(report.split())
-    
-    # Remove common OCR artifacts while preserving medical symbols
-    artifacts_to_remove = [
-        '|', '~', '`', '§', '±', '¿', '¡'  # Removed '°' as it might be temperature
-    ]
-    
-    for artifact in artifacts_to_remove:
-        cleaned = cleaned.replace(artifact, '')
-    
-    # Fix common OCR mistakes
-    replacements = {
-        ' I ': ' 1 ',  # Common OCR mistake
-        ' l ': ' 1 ',  # Another common mistake
-        ' O ': ' 0 ',  # Zero vs O
+    # 常見放射科術語
+    RADIOLOGY_TERMS = {
+        'scan', 'ct', 'mri', 'xray', 'x-ray', 'ultrasound', 'mammogram',
+        'examination', 'study', 'image', 'imaging', 'radiological',
+        'findings', 'impression', 'conclusion', 'recommendation',
+        'technique', 'protocol', 'contrast', 'enhancement',
+        'normal', 'abnormal', 'unremarkable', 'significant',
+        'lesion', 'mass', 'nodule', 'opacity', 'density',
+        'attenuation', 'intensity', 'signal', 'enhancement'
     }
     
-    for old, new in replacements.items():
-        cleaned = cleaned.replace(old, new)
+    # 解剖結構術語
+    ANATOMY_TERMS = {
+        'chest', 'thorax', 'lung', 'pulmonary', 'cardiac', 'heart',
+        'abdomen', 'abdominal', 'liver', 'hepatic', 'kidney', 'renal',
+        'brain', 'cerebral', 'spine', 'spinal', 'vertebral',
+        'pelvis', 'pelvic', 'head', 'neck', 'limb', 'joint',
+        'bone', 'osseous', 'soft tissue', 'muscle', 'vessel',
+        'artery', 'vein', 'lymph', 'node'
+    }
     
-    return cleaned.strip()
+    # 病理術語
+    PATHOLOGY_TERMS = {
+        'fracture', 'inflammation', 'infection', 'tumor', 'cancer',
+        'metastasis', 'edema', 'hemorrhage', 'infarction',
+        'stenosis', 'obstruction', 'dilation', 'hypertrophy',
+        'atrophy', 'calcification', 'fibrosis', 'necrosis'
+    }
+    
+    @classmethod
+    def get_all_terms(cls) -> set:
+        """獲取所有醫學術語"""
+        return cls.RADIOLOGY_TERMS | cls.ANATOMY_TERMS | cls.PATHOLOGY_TERMS
+    
+    @classmethod
+    def categorize_terms(cls, found_terms: List[str]) -> Dict[str, List[str]]:
+        """分類找到的醫學術語"""
+        categories = {
+            'radiology': [],
+            'anatomy': [],
+            'pathology': [],
+            'other': []
+        }
+        
+        for term in found_terms:
+            term_lower = term.lower()
+            if term_lower in cls.RADIOLOGY_TERMS:
+                categories['radiology'].append(term)
+            elif term_lower in cls.ANATOMY_TERMS:
+                categories['anatomy'].append(term)
+            elif term_lower in cls.PATHOLOGY_TERMS:
+                categories['pathology'].append(term)
+            else:
+                categories['other'].append(term)
+        
+        return categories
 
-def create_chat_completion(messages: list, model: str = "gpt-4o", max_retries: int = 3) -> Optional[str]:
-    """Create chat completion with retry logic"""
+class ContentValidator:
+    """內容驗證器"""
     
-    for attempt in range(max_retries):
-        try:
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=messages,
-                temperature=0.6,
-                max_tokens=2000
+    def __init__(self):
+        self.min_length = 20
+        self.max_length = 50000
+        self.medical_terms_db = MedicalTermsDatabase()
+    
+    def validate_content(self, text: str) -> ValidationResult:
+        """
+        驗證文本內容
+        
+        Args:
+            text: 待驗證的文本
+            
+        Returns:
+            ValidationResult: 驗證結果
+        """
+        if not text or not text.strip():
+            return ValidationResult(
+                is_valid=False,
+                content_type=ContentType.INVALID,
+                confidence_score=0.0,
+                issues=["文本為空"],
+                suggestions=["請輸入有效的文本內容"],
+                medical_terms=[],
+                structure_score=0,
+                readability_score=0
             )
-            
-            if response and "choices" in response and len(response["choices"]) > 0:
-                content = response["choices"][0]["message"]["content"]
-                if content and content.strip():
-                    logger.info(f"Successfully got AI response on attempt {attempt + 1}")
-                    return content.strip()
-                else:
-                    logger.warning(f"Empty response from OpenAI on attempt {attempt + 1}")
-            
-        except Exception as e:
-            error_str = str(e).lower()
-            
-            # Handle rate limiting
-            if "rate limit" in error_str or "quota" in error_str:
-                logger.warning(f"Rate limit exceeded on attempt {attempt + 1}, waiting...")
-                time.sleep(2 ** attempt)  # Exponential backoff
-                continue
-                
-            # Handle API errors
-            elif "api" in error_str or "invalid" in error_str:
-                logger.error(f"OpenAI API error on attempt {attempt + 1}: {e}")
-                time.sleep(1)
-                continue
-                
-            # Handle timeout
-            elif "timeout" in error_str or "connection" in error_str:
-                logger.warning(f"Request timeout on attempt {attempt + 1}: {e}")
-                time.sleep(1)
-                continue
-                
-            # Handle other errors
-            else:
-                logger.error(f"Unexpected error on attempt {attempt + 1}: {e}")
-                time.sleep(1)
-                continue
+        
+        text = text.strip()
+        issues = []
+        suggestions = []
+        
+        # 基本長度檢查
+        if len(text) < self.min_length:
+            issues.append(f"文本過短（少於{self.min_length}字符）")
+            suggestions.append("請提供更完整的報告內容")
+        
+        if len(text) > self.max_length:
+            issues.append(f"文本過長（超過{self.max_length}字符）")
+            suggestions.append("請分段處理或精簡內容")
+        
+        # 醫學術語檢測
+        medical_terms = self._find_medical_terms(text)
+        
+        # 內容類型識別
+        content_type, confidence = self._identify_content_type(text, medical_terms)
+        
+        # 結構分析
+        structure_score = self._analyze_structure(text)
+        
+        # 可讀性分析
+        readability_score = self._analyze_readability(text)
+        
+        # 整體驗證
+        is_valid = self._is_content_valid(
+            text, medical_terms, structure_score, readability_score
+        )
+        
+        if not medical_terms:
+            issues.append("未檢測到醫學術語")
+            suggestions.append("請確認這是醫學報告")
+        
+        return ValidationResult(
+            is_valid=is_valid,
+            content_type=content_type,
+            confidence_score=confidence,
+            issues=issues,
+            suggestions=suggestions,
+            medical_terms=medical_terms,
+            structure_score=structure_score,
+            readability_score=readability_score
+        )
     
-    return None
-
-def format_explanation(explanation: str, language: str) -> str:
-    """Format the explanation with proper HTML structure"""
-    if not explanation:
-        return ""
+    def _find_medical_terms(self, text: str) -> List[str]:
+        """查找醫學術語"""
+        text_lower = text.lower()
+        found_terms = []
+        
+        for term in self.medical_terms_db.get_all_terms():
+            if term in text_lower:
+                found_terms.append(term)
+        
+        return list(set(found_terms))  # 去重
     
-    # Add some basic HTML formatting if not present
-    if not any(tag in explanation for tag in ['<h', '<p', '<div', '<ul', '<ol']):
-        # Convert markdown-style headers to HTML
-        lines = explanation.split('\n')
-        formatted_lines = []
+    def _identify_content_type(self, text: str, medical_terms: List[str]) -> Tuple[ContentType, float]:
+        """識別內容類型"""
+        text_lower = text.lower()
         
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Convert emoji headers to HTML
-            if line.startswith('1️⃣') or line.startswith('2️⃣') or line.startswith('3️⃣'):
-                formatted_lines.append(f'<h3 style="color: #1f77b4; margin-top: 1.5rem; font-weight: bold;">{line}</h3>')
-            elif line.startswith('【') and line.endswith('】'):
-                formatted_lines.append(f'<h3 style="color: #1f77b4; margin-top: 1.5rem; font-weight: bold;">{line}</h3>')
-            elif line.startswith('**') and line.endswith('**'):
-                formatted_lines.append(f'<h3 style="color: #1f77b4; margin-top: 1.5rem; font-weight: bold;">{line[2:-2]}</h3>')
-            elif line.startswith('## '):
-                formatted_lines.append(f'<h3 style="color: #1f77b4; margin-top: 1.5rem; font-weight: bold;">{line[3:]}</h3>')
-            elif line.startswith('# '):
-                formatted_lines.append(f'<h2 style="color: #1f77b4; margin-top: 1.5rem; font-weight: bold;">{line[2:]}</h2>')
-            elif line.startswith('- '):
-                formatted_lines.append(f'<p style="margin-left: 1rem; margin-bottom: 0.5rem;">• {line[2:]}</p>')
-            elif line.startswith('* '):
-                formatted_lines.append(f'<p style="margin-left: 1rem; margin-bottom: 0.5rem;">• {line[2:]}</p>')
-            else:
-                formatted_lines.append(f'<p style="margin-bottom: 1rem; line-height: 1.6;">{line}</p>')
-        
-        return '\n'.join(formatted_lines)
-    
-    return explanation
-
-def add_safety_disclaimer(explanation: str, language: str) -> str:
-    """Add safety disclaimer to the explanation"""
-    disclaimers = {
-        "繁體中文": "\n\n<div style='border: 2px solid #ff9800; background-color: #fff3e0; padding: 1rem; border-radius: 8px; margin-top: 1.5rem;'><strong>⚠️ 重要提醒：</strong>此解釋僅供參考，不能取代專業醫療建議。請務必與您的醫師討論報告內容和後續治療計劃。如有疑問或擔憂，請立即諮詢醫療專業人員。</div>",
-        "简体中文": "\n\n<div style='border: 2px solid #ff9800; background-color: #fff3e0; padding: 1rem; border-radius: 8px; margin-top: 1.5rem;'><strong>⚠️ 重要提醒：</strong>此解释仅供参考，不能替代专业医疗建议。请务必与您的医师讨论报告内容和后续治疗计划。如有疑问或担忧，请立即咨询医疗专业人员。</div>",
-        "English": "\n\n<div style='border: 2px solid #ff9800; background-color: #fff3e0; padding: 1rem; border-radius: 8px; margin-top: 1.5rem;'><strong>⚠️ Important Notice:</strong> This explanation is for reference only and cannot replace professional medical advice. Please discuss the report content and follow-up treatment plans with your physician. If you have any concerns or questions, please consult with a medical professional immediately.</div>"
-    }
-    
-    disclaimer = disclaimers.get(language, disclaimers["简体中文"])
-    return explanation + disclaimer
-
-def explain_report(report: str, language: str) -> Tuple[str, Dict[str, Any]]:
-    """
-    Main function to explain radiology report
-    
-    Args:
-        report: The radiology report text
-        language: Target language for explanation
-        
-    Returns:
-        Tuple of (formatted_explanation, simple_metrics)
-        
-    Raises:
-        TranslatorError: If translation fails
-    """
-    start_time = time.time()
-    
-    # Simple metrics for backward compatibility
-    metrics = {
-        "success": False,
-        "error_message": None
-    }
-    
-    try:
-        # Validate inputs
-        if not report or not report.strip():
-            raise TranslatorError("Empty report provided")
-        
-        if language not in ["繁體中文", "简体中文", "English"]:
-            raise TranslatorError(f"Unsupported language: {language}")
-        
-        # Clean and validate report
-        cleaned_report = clean_report(report)
-        
-        is_valid, validation_reason = validate_report(cleaned_report)
-        
-        if not is_valid:
-            # Try to provide a helpful message based on language
-            error_messages = {
-                "繁體中文": f"❌ 無法識別有效的醫學報告內容：{validation_reason}。請確認上傳的是完整的放射科報告，並且圖片清晰可讀。",
-                "简体中文": f"❌ 无法识别有效的医学报告内容：{validation_reason}。请确认上传的是完整的放射科报告，并且图片清晰可读。",
-                "English": f"❌ Unable to identify valid medical report content: {validation_reason}. Please ensure you've uploaded a complete radiology report and that the image is clear and readable."
-            }
-            
-            error_message = error_messages.get(language, error_messages["简体中文"])
-            metrics["error_message"] = f"Validation failed: {validation_reason}"
-            
-            return f"<p>{error_message}</p>", metrics
-        
-        # Get system prompt
-        system_prompt = get_prompt(language)
-        
-        # Create messages
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": cleaned_report}
+        # 放射科報告特徵
+        radiology_indicators = [
+            'impression:', 'findings:', 'technique:', 'clinical history:',
+            'examination:', 'study:', 'images show', 'no evidence of'
         ]
         
-        # Get explanation from OpenAI
-        explanation = create_chat_completion(messages)
+        radiology_score = sum(1 for indicator in radiology_indicators if indicator in text_lower)
+        medical_terms_score = len(medical_terms)
         
-        if not explanation:
-            raise TranslatorError("Failed to generate explanation after multiple attempts")
+        if radiology_score >= 2 and medical_terms_score >= 3:
+            return ContentType.RADIOLOGY_REPORT, 0.9
+        elif radiology_score >= 1 and medical_terms_score >= 2:
+            return ContentType.RADIOLOGY_REPORT, 0.7
+        elif medical_terms_score >= 3:
+            return ContentType.MEDICAL_DOCUMENT, 0.6
+        elif medical_terms_score >= 1:
+            return ContentType.MEDICAL_DOCUMENT, 0.4
+        else:
+            return ContentType.GENERAL_TEXT, 0.2
+    
+    def _analyze_structure(self, text: str) -> int:
+        """分析文本結構（0-100分）"""
+        score = 100
         
-        # Format explanation
-        formatted_explanation = format_explanation(explanation, language)
+        # 檢查段落結構
+        lines = text.split('\n')
+        if len(lines) < 3:
+            score -= 20
         
-        # Add safety disclaimer
-        final_explanation = add_safety_disclaimer(formatted_explanation, language)
+        # 檢查標題結構
+        headers = ['impression', 'findings', 'technique', 'clinical', 'examination']
+        found_headers = sum(1 for header in headers if header.lower() in text.lower())
         
-        # Update metrics
-        metrics["success"] = True
+        if found_headers == 0:
+            score -= 30
+        elif found_headers < 2:
+            score -= 15
         
-        processing_time = int((time.time() - start_time) * 1000)
-        logger.info(f"Successfully generated explanation for {language} language. "
-                   f"Processing time: {processing_time}ms")
+        # 檢查句子結構
+        sentences = re.split(r'[.!?]+', text)
+        if len(sentences) < 3:
+            score -= 15
         
-        return final_explanation, metrics
+        return max(0, score)
+    
+    def _analyze_readability(self, text: str) -> int:
+        """分析文本可讀性（0-100分）"""
+        score = 100
         
-    except TranslatorError as e:
-        metrics["error_message"] = str(e)
-        logger.error(f"TranslatorError: {e}")
-        raise
-    except Exception as e:
-        metrics["error_message"] = f"Unexpected error: {str(e)}"
-        logger.error(f"Unexpected error in explain_report: {e}")
-        raise TranslatorError(f"Failed to process report: {str(e)}")
+        # 字符質量檢查
+        total_chars = len(text)
+        alpha_chars = sum(1 for c in text if c.isalpha())
+        
+        if total_chars > 0:
+            alpha_ratio = alpha_chars / total_chars
+            if alpha_ratio < 0.3:
+                score -= 40
+            elif alpha_ratio < 0.5:
+                score -= 20
+        
+        # 單詞長度檢查
+        words = text.split()
+        if words:
+            avg_word_length = sum(len(word) for word in words) / len(words)
+            if avg_word_length < 2:
+                score -= 30
+        
+        return max(0, score)
+    
+    def _is_content_valid(self, text: str, medical_terms: List[str], 
+                         structure_score: int, readability_score: int) -> bool:
+        """判斷內容是否有效"""
+        if len(text) < self.min_length:
+            return False
+        
+        if len(medical_terms) < 1:
+            return False
+        
+        if structure_score < 30:
+            return False
+        
+        if readability_score < 20:
+            return False
+        
+        return True
 
-def get_report_quality_score(report: str) -> Dict[str, Any]:
+class TranslatorError(Exception):
+    """翻譯器自定義異常"""
+    pass
+
+class EnhancedTranslator:
+    """增強型翻譯器"""
+    
+    def __init__(self, openai_client, max_retries: int = 3):
+        self.client = openai_client
+        self.max_retries = max_retries
+        self.validator = ContentValidator()
+        self.medical_terms_db = MedicalTermsDatabase()
+    
+    def translate_medical_report(self, 
+                               report_text: str, 
+                               target_language: str,
+                               system_prompt: str) -> TranslationResult:
+        """
+        翻譯醫學報告
+        
+        Args:
+            report_text: 原始報告文本
+            target_language: 目標語言
+            system_prompt: 系統提示詞
+            
+        Returns:
+            TranslationResult: 翻譯結果
+        """
+        start_time = time.time()
+        
+        try:
+            # 預處理和驗證
+            cleaned_text = self._preprocess_text(report_text)
+            validation_result = self.validator.validate_content(cleaned_text)
+            
+            if not validation_result.is_valid:
+                return TranslationResult(
+                    success=False,
+                    translated_text="",
+                    quality_score=0,
+                    quality_level=TranslationQuality.FAILED,
+                    processing_time_ms=self._get_processing_time(start_time),
+                    word_count=len(cleaned_text.split()),
+                    medical_terms_found=validation_result.medical_terms,
+                    warnings=validation_result.suggestions,
+                    errors=validation_result.issues,
+                    metadata={"validation_result": validation_result}
+                )
+            
+            # 執行翻譯
+            translated_text = self._perform_translation(
+                cleaned_text, system_prompt
+            )
+            
+            # 質量評估
+            quality_score, quality_level = self._assess_quality(
+                cleaned_text, translated_text, validation_result
+            )
+            
+            # 生成結果
+            processing_time = self._get_processing_time(start_time)
+            
+            return TranslationResult(
+                success=True,
+                translated_text=translated_text,
+                quality_score=quality_score,
+                quality_level=quality_level,
+                processing_time_ms=processing_time,
+                word_count=len(cleaned_text.split()),
+                medical_terms_found=validation_result.medical_terms,
+                warnings=[],
+                errors=[],
+                metadata={
+                    "validation_result": validation_result,
+                    "target_language": target_language
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"翻譯過程中發生錯誤: {e}")
+            return TranslationResult(
+                success=False,
+                translated_text="",
+                quality_score=0,
+                quality_level=TranslationQuality.FAILED,
+                processing_time_ms=self._get_processing_time(start_time),
+                word_count=0,
+                medical_terms_found=[],
+                warnings=[],
+                errors=[str(e)],
+                metadata={}
+            )
+    
+    def _preprocess_text(self, text: str) -> str:
+        """預處理文本"""
+        if not text:
+            return ""
+        
+        # 移除過多的空白
+        text = re.sub(r'\s+', ' ', text.strip())
+        
+        # 修正常見的OCR錯誤
+        ocr_fixes = {
+            r'\bl\b': '1',  # 單獨的 l 替換為 1
+            r'\bO\b': '0',  # 單獨的 O 替換為 0
+            r'rn': 'm',     # rn 組合經常被誤識別為 m
+            r'(\d)\s*-\s*(\d)': r'\1-\2',  # 修復數字間的連字符
+        }
+        
+        for pattern, replacement in ocr_fixes.items():
+            text = re.sub(pattern, replacement, text)
+        
+        return text
+    
+    def _perform_translation(self, text: str, system_prompt: str) -> str:
+        """執行翻譯"""
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"請翻譯並解釋以下放射科報告：\n\n{text}"}
+                    ],
+                    temperature=0.3,
+                    max_tokens=2500,
+                    timeout=30
+                )
+                
+                result = response.choices[0].message.content.strip()
+                
+                if result:
+                    logger.info(f"翻譯成功，嘗試次數：{attempt + 1}")
+                    return result
+                else:
+                    logger.warning(f"翻譯返回空結果，嘗試次數：{attempt + 1}")
+                    
+            except Exception as e:
+                logger.warning(f"翻譯嘗試 {attempt + 1} 失敗: {e}")
+                
+                if attempt < self.max_retries - 1:
+                    # 指數退避
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                else:
+                    raise TranslatorError(f"翻譯失敗，已重試 {self.max_retries} 次")
+        
+        raise TranslatorError("翻譯失敗")
+    
+    def _assess_quality(self, 
+                       original_text: str, 
+                       translated_text: str,
+                       validation_result: ValidationResult) -> Tuple[int, TranslationQuality]:
+        """評估翻譯質量"""
+        score = 100
+        
+        # 基於原文質量
+        if validation_result.structure_score < 50:
+            score -= 20
+        
+        if validation_result.readability_score < 50:
+            score -= 15
+        
+        # 翻譯長度檢查
+        original_words = len(original_text.split())
+        translated_words = len(translated_text.split())
+        
+        if translated_words < original_words * 0.5:
+            score -= 30
+        elif translated_words > original_words * 3:
+            score -= 20
+        
+        # 結構完整性檢查
+        if "📋" not in translated_text or "🔍" not in translated_text:
+            score -= 25
+        
+        if "💡" not in translated_text or "❓" not in translated_text:
+            score -= 25
+        
+        # 確定質量等級
+        if score >= 90:
+            quality_level = TranslationQuality.EXCELLENT
+        elif score >= 75:
+            quality_level = TranslationQuality.GOOD
+        elif score >= 60:
+            quality_level = TranslationQuality.ACCEPTABLE
+        elif score >= 30:
+            quality_level = TranslationQuality.POOR
+        else:
+            quality_level = TranslationQuality.FAILED
+        
+        return max(0, score), quality_level
+    
+    def _get_processing_time(self, start_time: float) -> int:
+        """獲取處理時間（毫秒）"""
+        return int((time.time() - start_time) * 1000)
+
+# 便捷函數
+def create_translator(openai_client) -> EnhancedTranslator:
+    """創建翻譯器實例"""
+    return EnhancedTranslator(openai_client)
+
+def validate_medical_content(text: str) -> ValidationResult:
+    """驗證醫學內容的便捷函數"""
+    validator = ContentValidator()
+    return validator.validate_content(text)
+
+def get_medical_terms(text: str) -> Dict[str, List[str]]:
+    """獲取醫學術語的便捷函數"""
+    validator = ContentValidator()
+    found_terms = validator._find_medical_terms(text)
+    return MedicalTermsDatabase.categorize_terms(found_terms)
+
+# 向後兼容的函數
+def translate_and_explain_report(report_text: str, language_code: str, 
+                                openai_client, system_prompt: str) -> str:
     """
-    Analyze report quality and provide a score
+    向後兼容的翻譯函數
     
     Args:
-        report: The radiology report text
+        report_text: 報告文本
+        language_code: 語言代碼
+        openai_client: OpenAI 客戶端
+        system_prompt: 系統提示詞
         
     Returns:
-        Dictionary with quality metrics
+        str: 翻譯結果文本
     """
-    if not report:
-        return {"score": 0, "issues": ["Empty report"], "suggestions": []}
-    
-    issues = []
-    suggestions = []
-    score = 100
-    
-    # Check length
-    if len(report) < 50:
-        issues.append("Report is very short")
-        suggestions.append("Ensure complete report is captured")
-        score -= 20
-    
-    # Check for medical terminology
-    medical_terms = [
-        'impression', 'finding', 'examination', 'study', 'normal', 'abnormal',
-        'ct', 'mri', 'xray', 'ultrasound', 'scan', 'image'
-    ]
-    
-    found_terms = sum(1 for term in medical_terms if term.lower() in report.lower())
-    if found_terms < 2:
-        issues.append("Limited medical terminology detected")
-        suggestions.append("Verify this is a complete medical report")
-        score -= 15
-    
-    # Check for structure
-    structure_indicators = ['impression:', 'findings:', 'conclusion:', 'technique:']
-    found_structure = sum(1 for indicator in structure_indicators if indicator.lower() in report.lower())
-    
-    if found_structure == 0:
-        issues.append("No clear report structure identified")
-        suggestions.append("Look for sections like 'Findings' or 'Impression'")
-        score -= 10
-    
-    # Check for excessive special characters (OCR artifacts)
-    special_char_ratio = sum(1 for c in report if not c.isalnum() and c not in ' .,;:()-/') / len(report)
-    if special_char_ratio > 0.1:
-        issues.append("High number of special characters detected")
-        suggestions.append("Image quality may be poor - try a clearer scan")
-        score -= 15
-    
-    # Check word count
-    word_count = len(report.split())
-    if word_count < 10:
-        issues.append("Very few words detected")
-        suggestions.append("Ensure text is clearly visible in image")
-        score -= 20
-    
-    return {
-        "score": max(0, score),
-        "word_count": word_count,
-        "character_count": len(report),
-        "medical_terms_found": found_terms,
-        "structure_indicators": found_structure,
-        "issues": issues,
-        "suggestions": suggestions
-    }
+    try:
+        translator = EnhancedTranslator(openai_client)
+        result = translator.translate_medical_report(
+            report_text, language_code, system_prompt
+        )
+        
+        if result.success:
+            return result.translated_text
+        else:
+            error_msg = "; ".join(result.errors) if result.errors else "未知錯誤"
+            return f"❌ 翻譯失敗：{error_msg}"
+            
+    except Exception as e:
+        logger.error(f"翻譯函數錯誤: {e}")
+        return f"❌ 翻譯過程中發生錯誤：{str(e)}"
