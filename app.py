@@ -166,7 +166,7 @@ def load_css():
         
         .stApp {
             font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e0f7fa 0%, #ffffff 100%);
             min-height: 100vh;
         }
         
