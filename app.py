@@ -31,18 +31,39 @@ class RadiAIApp:
     def initialize(self):
         """初始化應用"""
         # 頁面配置
-        st.set_page_config(
-            page_title=self.config.APP_TITLE,
-            page_icon=self.config.APP_ICON,
-            layout="centered",
-            initial_sidebar_state="collapsed"
-        )
-        
-        # 初始化會話狀態
-        self.session_manager.init_session_state()
-        
-        # 載入 CSS
-        st.markdown(CSS_STYLES, unsafe_allow_html=True)
+        try:
+            # 嘗試獲取 logo 用於頁面圖標
+            try:
+                logo_data, mime_type = self.config.get_logo_base64()
+                # 如果是圖片格式，不能直接用作頁面圖標，使用默認
+                page_icon = self.config.APP_ICON
+            except Exception as e:
+                logger.warning(f"Logo 加載警告: {e}")
+                page_icon = self.config.APP_ICON
+            
+            st.set_page_config(
+                page_title=self.config.APP_TITLE,
+                page_icon=page_icon,
+                layout="centered",
+                initial_sidebar_state="collapsed"
+            )
+            
+            # 初始化會話狀態
+            self.session_manager.init_session_state()
+            
+            # 載入 CSS
+            st.markdown(CSS_STYLES, unsafe_allow_html=True)
+            
+            logger.info("應用初始化成功")
+            
+        except Exception as e:
+            logger.error(f"應用初始化失敗: {e}")
+            # 提供最小初始化
+            st.set_page_config(
+                page_title="RadiAI.Care",
+                page_icon="🏥",
+                layout="centered"
+            )
     
     def run(self):
         """運行主應用"""
@@ -58,6 +79,10 @@ class RadiAIApp:
                 
                 # 渲染標題和 Logo
                 self.ui.render_header(lang)
+                
+                # 開發模式：顯示 Logo 調試信息
+                if st.secrets.get("DEBUG_MODE", False):
+                    self.ui.render_logo_debug_info()
                 
                 # 語言選擇
                 self.ui.render_language_selection(lang)
@@ -192,12 +217,163 @@ class RadiAIApp:
             3. **稍後重試**：等待 1-2 分鐘後重新嘗試
             4. **檢查網路連線**：確保網路連線穩定
             5. **聯繫技術支援**：發送錯誤資訊至 support@radiai.care
+            
+            ### 🔍 系統檢查：
             """)
+            
+            # 系統狀態檢查
+            self._render_system_status()
+    
+    def _render_system_status(self):
+        """渲染系統狀態檢查"""
+        try:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**🔧 組件狀態：**")
+                
+                # 檢查各個組件
+                components_status = {
+                    "配置模塊": self._check_config(),
+                    "翻譯引擎": self._check_translator(),
+                    "文件處理": self._check_file_handler(),
+                    "UI 組件": self._check_ui_components(),
+                    "Logo 文件": self._check_logo()
+                }
+                
+                for component, status in components_status.items():
+                    status_icon = "✅" if status else "❌"
+                    st.text(f"{status_icon} {component}")
+            
+            with col2:
+                st.markdown("**🌐 網路狀態：**")
+                
+                # 檢查網路相關
+                network_status = {
+                    "OpenAI 連接": self._check_openai_connection(),
+                    "Google Sheets": self._check_google_sheets(),
+                    "環境變量": self._check_environment()
+                }
+                
+                for service, status in network_status.items():
+                    status_icon = "✅" if status else "❌"
+                    st.text(f"{status_icon} {service}")
+                    
+        except Exception as e:
+            st.error(f"系統檢查失敗: {e}")
+    
+    def _check_config(self) -> bool:
+        """檢查配置模塊"""
+        try:
+            return hasattr(self.config, 'APP_TITLE') and hasattr(self.config, 'MEDICAL_KEYWORDS')
+        except:
+            return False
+    
+    def _check_translator(self) -> bool:
+        """檢查翻譯引擎"""
+        try:
+            return hasattr(self.translator, 'client') and self.translator.client is not None
+        except:
+            return False
+    
+    def _check_file_handler(self) -> bool:
+        """檢查文件處理器"""
+        try:
+            return hasattr(self.file_handler, 'supported_types')
+        except:
+            return False
+    
+    def _check_ui_components(self) -> bool:
+        """檢查 UI 組件"""
+        try:
+            return hasattr(self.ui, 'render_header')
+        except:
+            return False
+    
+    def _check_logo(self) -> bool:
+        """檢查 Logo 文件"""
+        try:
+            logo_data, mime_type = self.config.get_logo_base64()
+            return len(logo_data) > 0
+        except:
+            return False
+    
+    def _check_openai_connection(self) -> bool:
+        """檢查 OpenAI 連接"""
+        try:
+            import os
+            return bool(os.getenv("OPENAI_API_KEY"))
+        except:
+            return False
+    
+    def _check_google_sheets(self) -> bool:
+        """檢查 Google Sheets 連接"""
+        try:
+            import os
+            return bool(os.getenv("GOOGLE_SHEET_SECRET_B64"))
+        except:
+            return False
+    
+    def _check_environment(self) -> bool:
+        """檢查環境變量"""
+        try:
+            import os
+            required_vars = ["OPENAI_API_KEY", "GOOGLE_SHEET_SECRET_B64"]
+            return all(os.getenv(var) for var in required_vars)
+        except:
+            return False
 
 def main():
     """主函數"""
-    app = RadiAIApp()
-    app.run()
+    try:
+        app = RadiAIApp()
+        app.run()
+    except Exception as e:
+        # 最後的錯誤處理
+        st.error("🚨 應用啟動失敗")
+        st.exception(e)
+        
+        st.markdown("""
+        ### 🆘 緊急恢復步驟：
+        
+        1. **檢查文件結構**：確保所有必要文件都存在
+        2. **檢查環境變量**：確保 OPENAI_API_KEY 和 GOOGLE_SHEET_SECRET_B64 已設置
+        3. **檢查依賴包**：運行 `pip install -r requirements.txt`
+        4. **檢查 Logo 文件**：確保 assets/llogo 文件存在且可讀
+        5. **聯繫支援**：發送錯誤信息至 support@radiai.care
+        
+        ### 🔍 快速診斷：
+        """)
+        
+        # 簡單的文件結構檢查
+        import os
+        from pathlib import Path
+        
+        required_files = [
+            "config/settings.py",
+            "utils/translator.py", 
+            "utils/file_handler.py",
+            "components/ui_components.py",
+            "log_to_sheets.py"
+        ]
+        
+        for file_path in required_files:
+            if Path(file_path).exists():
+                st.success(f"✅ {file_path}")
+            else:
+                st.error(f"❌ {file_path} - 文件缺失")
+        
+        # Logo 文件檢查
+        logo_paths = ["assets/llogo", "assets/llogo.png", "llogo", "llogo.png"]
+        logo_found = False
+        for logo_path in logo_paths:
+            if Path(logo_path).exists():
+                st.success(f"✅ Logo: {logo_path}")
+                logo_found = True
+                break
+        
+        if not logo_found:
+            st.warning("⚠️ Logo 文件未找到，將使用默認圖標")
 
 if __name__ == "__main__":
     main()
