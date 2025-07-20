@@ -210,7 +210,6 @@ def create_enhanced_disclaimer(language: str) -> str:
     
     disclaimers = {
         "traditional_chinese": """
-
 <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 2px solid #ff9800; border-radius: 12px; padding: 1.5rem; margin-top: 2rem; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.15);">
     <div style="text-align: center; font-weight: bold; color: #bf360c; font-size: 1.1rem; margin-bottom: 1rem;">
         ⚠️ 重要醫療免責聲明
@@ -235,7 +234,6 @@ def create_enhanced_disclaimer(language: str) -> str:
 </div>""",
 
         "simplified_chinese": """
-
 <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 2px solid #ff9800; border-radius: 12px; padding: 1.5rem; margin-top: 2rem; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.15);">
     <div style="text-align: center; font-weight: bold; color: #bf360c; font-size: 1.1rem; margin-bottom: 1rem;">
         ⚠️ 重要医疗免责声明
@@ -441,4 +439,4 @@ def validate_prompt_response(response_text: str, language: str) -> dict:
         "has_disclaimer": has_disclaimer,
         "character_count": len(response_text),
         "is_valid": quality_score >= 60
-    })
+    }
