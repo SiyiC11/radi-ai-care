@@ -61,7 +61,7 @@ client = get_openai_client()
 LANGUAGE_CONFIG = {
     "繁體中文": {
         "code": "traditional_chinese",
-        "flag":"-"
+        "flag":" ",
         "app_title": "RadiAI.Care",
         "app_subtitle": "🩺 智能醫療報告解讀助手",
         "app_description": "將英文放射科報告轉譯為易懂的中文解釋",
@@ -105,7 +105,7 @@ LANGUAGE_CONFIG = {
     },
     "简体中文": {
         "code": "simplified_chinese",
-        "flag":"-"
+        "flag":" ",
         "app_title": "RadiAI.Care",
         "app_subtitle": "🩺 智能医疗报告解读助手",
         "app_description": "将英文放射科报告转译为易懂的中文解释",
