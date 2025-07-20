@@ -73,21 +73,97 @@ class UIComponents:
                 st.rerun()
     
     def render_disclaimer(self, lang: Dict):
-        """渲染法律聲明（v3 版本樣式）"""
-        disclaimer_html = f"""
-        <div class="disclaimer-container">
-            <div class="disclaimer-title">{lang["disclaimer_title"]}</div>
-        """
+        """渲染法律聲明（使用 Streamlit 原生組件）"""
         
-        for i, item in enumerate(lang["disclaimer_items"], 1):
-            disclaimer_html += f"""
-            <div class="disclaimer-item">
-                <strong>📌 {i}.</strong> {item}
+        # 創建警告框標題
+        st.warning(f"⚠️ **{lang['disclaimer_title']}**")
+        
+        # 使用 expander 來組織內容，提供更好的用戶體驗
+        with st.expander("📋 點擊查看完整法律聲明", expanded=True):
+            # 使用列來美化佈局
+            col1, col2 = st.columns([1, 20])
+            
+            with col2:
+                for i, item in enumerate(lang["disclaimer_items"], 1):
+                    # 使用 info 框來突出每個聲明項目
+                    st.info(f"**📌 {i}.** {item}")
+            
+            # 添加底部重要提醒
+            st.success("🔒 **重要提醒**: 您的健康和安全是我們最關心的事項，請務必遵循以上指導原則。")
+            
+            # 添加聯繫資訊
+            st.markdown("""
+            ---
+            **🆘 緊急情況處理：**
+            - 🚨 **緊急醫療**: 立即撥打 **000**
+            - 🏥 **就醫建議**: 前往最近的急診室
+            - 👨‍⚕️ **專業諮詢**: 聯繫您的家庭醫師 (GP)
+            """)
+    
+    def render_disclaimer_alternative(self, lang: Dict):
+        """渲染法律聲明（備用 HTML 版本）"""
+        
+        # 如果需要更美觀的顯示，可以使用這個版本
+        st.markdown(f"""
+        <div style="
+            background: linear-gradient(135deg, #fff8e1 0%, #ffefd5 100%);
+            border: 2px solid #ff9800;
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 4px 15px rgba(255, 152, 0, 0.15);
+        ">
+            <div style="
+                text-align: center;
+                font-weight: bold;
+                color: #bf360c;
+                font-size: 1.2rem;
+                margin-bottom: 1rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+            ">
+                ⚠️ {lang["disclaimer_title"]}
             </div>
-            """
+        </div>
+        """, unsafe_allow_html=True)
         
-        disclaimer_html += "</div>"
-        st.markdown(disclaimer_html, unsafe_allow_html=True)
+        # 使用 Streamlit 原生組件渲染聲明項目
+        for i, item in enumerate(lang["disclaimer_items"], 1):
+            st.markdown(f"""
+            <div style="
+                margin: 0.8rem 0;
+                padding: 1rem 1.2rem;
+                background: rgba(255, 255, 255, 0.9);
+                border-radius: 12px;
+                border-left: 5px solid #ff9800;
+                box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+                font-size: 0.95rem;
+                line-height: 1.6;
+                color: #d84315;
+                font-weight: 500;
+            ">
+                <strong style="color: #bf360c;">📌 {i}.</strong> {item}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # 添加底部提醒
+        st.markdown(f"""
+        <div style="
+            text-align: center;
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(255, 193, 7, 0.1);
+            border-radius: 8px;
+            font-style: italic;
+            color: #f57c00;
+            font-weight: 600;
+            border: 1px dashed #ff9800;
+        ">
+            🔒 您的健康和安全是我們最關心的事項 🔒
+        </div>
+        """, unsafe_allow_html=True)
     
     def render_usage_tracker(self, lang: Dict) -> int:
         """渲染使用次數追蹤"""
