@@ -508,8 +508,7 @@ def render_disclaimer(lang):
     for i, item in enumerate(lang["disclaimer_items"], 1):
         disclaimer_html += f'''
         <div class="disclaimer-item">
-            <strong>🔸 重要聲明 {i}</strong><br>
-            {item}
+            <strong>📌 {i}. </strong>{item}
         </div>
         '''
     
