@@ -4,6 +4,8 @@ RadiAI.Care 應用程序配置文件
 """
 
 import base64
+import os
+from pathlib import Path
 
 class AppConfig:
     """應用程序基本配置"""
@@ -53,7 +55,67 @@ class AppConfig:
     
     @staticmethod
     def get_logo_base64():
-        """返回 Logo 的 base64 編碼"""
+        """返回 Logo 的 base64 編碼，優先使用上傳的圖片文件"""
+        
+        # 定義可能的 logo 文件路徑和擴展名
+        possible_paths = [
+            "assets/llogo",
+            "assets/llogo.png", 
+            "assets/llogo.jpg",
+            "assets/llogo.jpeg",
+            "assets/llogo.svg",
+            "assets/llogo.gif",
+            "llogo",
+            "llogo.png",
+            "llogo.jpg", 
+            "llogo.jpeg",
+            "llogo.svg",
+            "llogo.gif"
+        ]
+        
+        # 嘗試找到並讀取 logo 文件
+        for logo_path in possible_paths:
+            try:
+                # 使用 Path 對象處理路徑
+                path_obj = Path(logo_path)
+                
+                # 檢查文件是否存在
+                if path_obj.exists() and path_obj.is_file():
+                    # 讀取文件內容
+                    with open(path_obj, "rb") as f:
+                        file_content = f.read()
+                    
+                    # 根據文件擴展名確定 MIME 類型
+                    file_extension = path_obj.suffix.lower()
+                    if file_extension in ['.png']:
+                        mime_type = 'image/png'
+                    elif file_extension in ['.jpg', '.jpeg']:
+                        mime_type = 'image/jpeg'
+                    elif file_extension in ['.svg']:
+                        mime_type = 'image/svg+xml'
+                    elif file_extension in ['.gif']:
+                        mime_type = 'image/gif'
+                    else:
+                        # 如果沒有擴展名，嘗試 PNG 格式
+                        mime_type = 'image/png'
+                    
+                    # 編碼為 base64
+                    encoded_image = base64.b64encode(file_content).decode()
+                    
+                    print(f"✅ 成功加載 logo 文件: {logo_path}")
+                    return encoded_image, mime_type
+                    
+            except Exception as e:
+                print(f"⚠️ 無法讀取 logo 文件 {logo_path}: {e}")
+                continue
+        
+        # 如果找不到圖片文件，使用默認的 SVG logo
+        print("📝 使用默認 SVG logo")
+        return AppConfig._get_default_svg_logo(), 'image/svg+xml'
+    
+    @staticmethod
+    def _get_default_svg_logo():
+        """返回默認的 SVG logo（備用方案）"""
         logo_svg = """
         <svg width="60" height="60" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
             <!-- 外層橙色對話氣泡 -->
