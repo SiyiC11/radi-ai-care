@@ -1,6 +1,6 @@
 """
 RadiAI.Care UI 組件
-統一管理所有 UI 元素的渲染
+統一管理所有 UI 元素的渲染（支援圖片 Logo）
 """
 
 import streamlit as st
@@ -16,18 +16,41 @@ class UIComponents:
         self.file_handler = FileHandler()
     
     def render_header(self, lang: Dict):
-        """渲染標題和 Logo"""
-        logo_base64 = self.config.get_logo_base64()
-        st.markdown(f'''
-        <div class="title-section">
-            <div class="logo-container">
-                <img src="data:image/svg+xml;base64,{logo_base64}" width="60" height="60" alt="RadiAI.Care Logo">
+        """渲染標題和 Logo（支援圖片文件）"""
+        try:
+            # 獲取 logo 數據和 MIME 類型
+            logo_data, mime_type = self.config.get_logo_base64()
+            
+            # 創建完整的 data URI
+            data_uri = f"data:{mime_type};base64,{logo_data}"
+            
+            st.markdown(f'''
+            <div class="title-section">
+                <div class="logo-container">
+                    <img src="{data_uri}" width="60" height="60" alt="RadiAI.Care Logo" style="border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                </div>
+                <div class="main-title">{lang["app_title"]}</div>
+                <div class="subtitle">{lang["app_subtitle"]}</div>
+                <div class="description">{lang["app_description"]}</div>
             </div>
-            <div class="main-title">{lang["app_title"]}</div>
-            <div class="subtitle">{lang["app_subtitle"]}</div>
-            <div class="description">{lang["app_description"]}</div>
-        </div>
-        ''', unsafe_allow_html=True)
+            ''', unsafe_allow_html=True)
+            
+        except Exception as e:
+            # 如果 logo 加載失敗，使用純文字版本
+            st.markdown(f'''
+            <div class="title-section">
+                <div class="logo-container">
+                    <div style="font-size: 3rem; margin-bottom: 0.5rem;">🏥</div>
+                </div>
+                <div class="main-title">{lang["app_title"]}</div>
+                <div class="subtitle">{lang["app_subtitle"]}</div>
+                <div class="description">{lang["app_description"]}</div>
+                <div style="font-size: 0.8rem; color: #888; margin-top: 0.5rem;">
+                    ⚠️ Logo 載入失敗，使用默認圖標
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+            print(f"Logo 渲染錯誤: {e}")
     
     def render_language_selection(self, lang: Dict):
         """渲染語言選擇按鈕"""
@@ -385,3 +408,20 @@ class UIComponents:
             </div>
         </div>
         ''', unsafe_allow_html=True)
+    
+    def render_logo_debug_info(self):
+        """渲染 Logo 調試信息（僅在開發模式下顯示）"""
+        if st.checkbox("🔧 顯示 Logo 調試信息", key="debug_logo"):
+            try:
+                logo_data, mime_type = self.config.get_logo_base64()
+                st.info(f"✅ Logo 加載成功")
+                st.text(f"MIME 類型: {mime_type}")
+                st.text(f"數據長度: {len(logo_data)} 字符")
+                
+                # 顯示 Logo 預覽
+                data_uri = f"data:{mime_type};base64,{logo_data}"
+                st.markdown(f'<img src="{data_uri}" width="100" height="100" style="border: 1px solid #ccc; border-radius: 8px;">', unsafe_allow_html=True)
+                
+            except Exception as e:
+                st.error(f"❌ Logo 加載失敗: {e}")
+                st.text("請檢查 assets/llogo 文件是否存在且格式正確")
