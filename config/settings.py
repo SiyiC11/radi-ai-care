@@ -302,36 +302,6 @@ CSS_STYLES = f"""
         line-height: 1.55;
     }}
     
-    /* v3 版本的法律聲明樣式 */
-    .disclaimer-container {{
-        background: linear-gradient(135deg,#fff8e1 0%,#ffefd5 100%);
-        border: 1.5px solid #f7c56a;
-        border-radius: 16px;
-        padding: 1.15rem 1.25rem 1.05rem;
-        margin: 1.1rem 0 1.4rem;
-        box-shadow: 0 4px 12px rgba(240,168,0,0.12);
-    }}
-    
-    .disclaimer-title {{
-        text-align: center;
-        font-size: 1.1rem;
-        font-weight: 700;
-        margin-bottom: .6rem;
-        color: #b25209;
-    }}
-    
-    .disclaimer-item {{
-        margin-bottom: .55rem;
-        padding: .55rem .75rem;
-        background: #ffffffbf;
-        border-radius: 9px;
-        border-left: 4px solid #ffb438;
-        font-size: .88rem;
-        line-height: 1.45;
-        color: #a34907;
-        font-weight: 500;
-    }}
-    
     .input-section {{
         background: #f3faff;
         border-radius: 18px;
@@ -404,6 +374,53 @@ CSS_STYLES = f"""
     }}
     ::-webkit-scrollbar-thumb:hover {{ 
         background: linear-gradient(180deg,#0a75b0,#1192ce); 
+    }}
+    
+    /* 自定義警告框樣式 */
+    .custom-warning {{
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        border: 2px solid #ff9800;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 15px rgba(255, 152, 0, 0.15);
+    }}
+    
+    .warning-title {{
+        text-align: center;
+        font-weight: bold;
+        color: #bf360c;
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }}
+    
+    .warning-item {{
+        margin: 0.8rem 0;
+        padding: 1rem 1.2rem;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 12px;
+        border-left: 5px solid #ff9800;
+        box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+        font-size: 0.95rem;
+        line-height: 1.6;
+        color: #d84315;
+        font-weight: 500;
+    }}
+    
+    .warning-footer {{
+        text-align: center;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: rgba(255, 193, 7, 0.1);
+        border-radius: 8px;
+        font-style: italic;
+        color: #f57c00;
+        font-weight: 600;
+        border: 1px dashed #ff9800;
     }}
 </style>
 """
