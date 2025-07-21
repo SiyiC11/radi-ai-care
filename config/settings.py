@@ -29,7 +29,18 @@ class AppConfig:
     feedback_sheet: str = "feedback"
     SUPPORTED_FILE_TYPES: Tuple[str, ...] = ("pdf", "txt", "docx", "doc")
     FILE_SIZE_LIMIT_MB: int = 10            # 依需求調整 (單位：MB)
+    MEDICAL_KEYWORDS: Tuple[str, ...] = (
+        # 可再自行擴充
+        "ct", "mri", "x‑ray", "ultrasound", "lesion", "mass",
+        "nodule", "abdomen", "brain", "spine", "lung", "heart"
+    )
+    MIN_TEXT_LENGTH: int = 80        # 少於此視為過短
+    MAX_TEXT_LENGTH: int = 15000     # 超過此視為過長
 
+    OPENAI_MODEL: str = "gpt-4o-mini"   # 改成你有權限的模型
+    OPENAI_TEMPERATURE: float = 0.2
+    OPENAI_MAX_TOKENS: int = 2048
+    OPENAI_TIMEOUT: int = 60            # 秒
 # ────────────────────────────────────────────────────
 # 2. 多語系介面文字
 # ────────────────────────────────────────────────────
