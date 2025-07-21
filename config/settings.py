@@ -6,13 +6,17 @@ RadiAI.Care 應用程序配置文件
 import base64
 import os
 from pathlib import Path
+from functools import lru_cache
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AppConfig:
     """應用程序基本配置"""
     
     APP_TITLE = "RadiAI.Care - 智能醫療報告助手"
     APP_ICON = "🏥"
-    APP_VERSION = "v4.2-模塊化版"
+    APP_VERSION = "v4.3-安全增強版"
     APP_DESCRIPTION = "為澳洲華人社區打造的醫療報告翻譯服務"
     
     # 功能限制
@@ -54,8 +58,13 @@ class AppConfig:
     ]
     
     @staticmethod
+    @lru_cache(maxsize=1)
     def get_logo_base64():
-        """返回 Logo 的 base64 編碼，優先使用上傳的圖片文件"""
+        """
+        返回 Logo 的 base64 編碼，使用 LRU 快取優化效能
+        Logo 只會被讀取一次，之後都從快取中獲取
+        """
+        logger.info("Loading logo file (this should only happen once)")
         
         # 定義可能的 logo 文件路徑和擴展名
         possible_paths = [
@@ -102,20 +111,21 @@ class AppConfig:
                     # 編碼為 base64
                     encoded_image = base64.b64encode(file_content).decode()
                     
-                    print(f"✅ 成功加載 logo 文件: {logo_path}")
+                    logger.info(f"✅ 成功加載 logo 文件: {logo_path}")
                     return encoded_image, mime_type
                     
             except Exception as e:
-                print(f"⚠️ 無法讀取 logo 文件 {logo_path}: {e}")
+                logger.warning(f"⚠️ 無法讀取 logo 文件 {logo_path}: {e}")
                 continue
         
         # 如果找不到圖片文件，使用默認的 SVG logo
-        print("📝 使用默認 SVG logo")
+        logger.info("📝 使用默認 SVG logo")
         return AppConfig._get_default_svg_logo(), 'image/svg+xml'
     
     @staticmethod
+    @lru_cache(maxsize=1)
     def _get_default_svg_logo():
-        """返回默認的 SVG logo（備用方案）"""
+        """返回默認的 SVG logo（備用方案）- 也使用快取"""
         logo_svg = """
         <svg width="60" height="60" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
             <!-- 外層橙色對話氣泡 -->
