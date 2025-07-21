@@ -135,35 +135,44 @@ class FeedbackManager:
     def _handle_quick_feedback(self, translation_id: str, sentiment: str, lang: Dict,
                              report_text: str, file_type: str, validation_result: Dict):
         """處理快速回饋"""
-        feedback_data = {
-            'translation_id': translation_id,
-            'language': st.session_state.language,
-            'feedback_type': 'quick',
-            'sentiment': sentiment,
-            'clarity_score': 0,  # 快速回饋不評分
-            'usefulness_score': 0,
-            'accuracy_score': 0,
-            'recommendation_score': 0,
-            'overall_satisfaction': 0,
-            'issues': '',
-            'suggestion': '',
-            'email': '',
-            'report_length': len(report_text),
-            'file_type': file_type,
-            'medical_terms_detected': len(validation_result.get('found_terms', [])),
-            'confidence_score': round(validation_result.get('confidence', 0), 2),
-            'app_version': self.config.APP_VERSION
-        }
-        
-        success = self._log_feedback(feedback_data)
-        
-        if success:
-            # 標記為已提交
-            st.session_state.feedback_submitted_ids.add(translation_id)
-            st.success(f"✅ {lang['feedback_submitted']}")
-            st.balloons()
-        else:
-            st.warning("⚠️ 回饋提交失敗，請稍後再試")
+        try:
+            feedback_data = {
+                'translation_id': translation_id,
+                'language': st.session_state.language,
+                'feedback_type': 'quick',
+                'sentiment': sentiment,
+                'clarity_score': 0,  # 快速回饋不評分
+                'usefulness_score': 0,
+                'accuracy_score': 0,
+                'recommendation_score': 0,
+                'overall_satisfaction': 0,
+                'issues': '',
+                'suggestion': '',
+                'email': '',
+                'report_length': len(report_text),
+                'file_type': file_type,
+                'medical_terms_detected': len(validation_result.get('found_terms', [])),
+                'confidence_score': round(validation_result.get('confidence', 0), 2),
+                'app_version': self.config.APP_VERSION,
+                'device_id': st.session_state.get('device_id', 'unknown')[:8] + "****",
+                'session_id': st.session_state.get('user_session_id', 'unknown')
+            }
+            
+            success = self._log_feedback(feedback_data)
+            
+            if success:
+                # 標記為已提交
+                st.session_state.feedback_submitted_ids.add(translation_id)
+                st.success(f"✅ {lang['feedback_submitted']}")
+                st.balloons()
+                time.sleep(0.5)  # 給一點時間顯示氣球
+                st.rerun()  # 重新運行以更新UI
+            else:
+                st.warning("⚠️ 回饋提交失敗，請稍後再試")
+                
+        except Exception as e:
+            logger.error(f"處理快速回饋失敗: {e}")
+            st.error("❌ 提交回饋時發生錯誤")
     
     def _handle_detailed_feedback(self, translation_id: str, lang: Dict, 
                                 clarity: int, usefulness: int, accuracy: int, 
@@ -171,44 +180,54 @@ class FeedbackManager:
                                 email: str, report_text: str, file_type: str, 
                                 validation_result: Dict):
         """處理詳細回饋"""
-        # 計算整體滿意度
-        overall_satisfaction = round((clarity + usefulness + accuracy) / 3, 2)
-        
-        feedback_data = {
-            'translation_id': translation_id,
-            'language': st.session_state.language,
-            'feedback_type': 'detailed',
-            'sentiment': 'positive' if overall_satisfaction >= 3.5 else 'negative',
-            'clarity_score': clarity,
-            'usefulness_score': usefulness,
-            'accuracy_score': accuracy,
-            'recommendation_score': recommendation,
-            'overall_satisfaction': overall_satisfaction,
-            'issues': ';'.join(issues) if issues else '無',
-            'suggestion': suggestion.strip() if suggestion else '無',
-            'email': email.strip() if email else '',
-            'report_length': len(report_text),
-            'file_type': file_type,
-            'medical_terms_detected': len(validation_result.get('found_terms', [])),
-            'confidence_score': round(validation_result.get('confidence', 0), 2),
-            'app_version': self.config.APP_VERSION
-        }
-        
-        success = self._log_feedback(feedback_data)
-        
-        if success:
-            # 標記為已提交
-            st.session_state.feedback_submitted_ids.add(translation_id)
-            st.success(f"✅ {lang['feedback_submitted']}")
-            st.balloons()
+        try:
+            # 計算整體滿意度
+            overall_satisfaction = round((clarity + usefulness + accuracy) / 3, 2)
             
-            # 顯示感謝信息
-            if overall_satisfaction >= 4:
-                st.info("🌟 感謝您的高度評價！我們會繼續努力提供更好的服務。")
-            elif overall_satisfaction < 3:
-                st.info("📝 感謝您的寶貴意見！我們會認真改進服務質量。")
-        else:
-            st.warning("⚠️ 回饋提交失敗，請稍後再試")
+            feedback_data = {
+                'translation_id': translation_id,
+                'language': st.session_state.language,
+                'feedback_type': 'detailed',
+                'sentiment': 'positive' if overall_satisfaction >= 3.5 else 'negative',
+                'clarity_score': clarity,
+                'usefulness_score': usefulness,
+                'accuracy_score': accuracy,
+                'recommendation_score': recommendation,
+                'overall_satisfaction': overall_satisfaction,
+                'issues': ';'.join(issues) if issues else '無',
+                'suggestion': suggestion.strip() if suggestion else '無',
+                'email': email.strip() if email else '',
+                'report_length': len(report_text),
+                'file_type': file_type,
+                'medical_terms_detected': len(validation_result.get('found_terms', [])),
+                'confidence_score': round(validation_result.get('confidence', 0), 2),
+                'app_version': self.config.APP_VERSION,
+                'device_id': st.session_state.get('device_id', 'unknown')[:8] + "****",
+                'session_id': st.session_state.get('user_session_id', 'unknown')
+            }
+            
+            success = self._log_feedback(feedback_data)
+            
+            if success:
+                # 標記為已提交
+                st.session_state.feedback_submitted_ids.add(translation_id)
+                st.success(f"✅ {lang['feedback_submitted']}")
+                st.balloons()
+                
+                # 顯示感謝信息
+                if overall_satisfaction >= 4:
+                    st.info("🌟 感謝您的高度評價！我們會繼續努力提供更好的服務。")
+                elif overall_satisfaction < 3:
+                    st.info("📝 感謝您的寶貴意見！我們會認真改進服務質量。")
+                
+                time.sleep(1)  # 給一點時間顯示信息
+                st.rerun()  # 重新運行以更新UI
+            else:
+                st.warning("⚠️ 回饋提交失敗，請稍後再試")
+                
+        except Exception as e:
+            logger.error(f"處理詳細回饋失敗: {e}")
+            st.error("❌ 提交回饋時發生錯誤")
     
     def _log_feedback(self, feedback_data: Dict[str, Any]) -> bool:
         """記錄回饋到 Google Sheets"""
