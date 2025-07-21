@@ -1,13 +1,13 @@
 """
 RadiAI.Care 回饋管理系統
-統一管理用戶回饋收集和數據記錄
+統一管理用戶回饋收集和數據記錄（修復版）
 """
 
 import streamlit as st
 import time
 import logging
 from typing import Dict, Any, Optional
-from log_to_sheets import log_to_google_sheets
+from log_to_sheets import log_feedback_to_sheets  # 使用專門的回饋記錄函數
 from config.settings import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,9 @@ class FeedbackManager:
     
     def __init__(self):
         self.config = AppConfig()
+        # 初始化回饋提交記錄
+        if 'feedback_submitted_ids' not in st.session_state:
+            st.session_state.feedback_submitted_ids = set()
     
     def render_feedback_section(self, lang: Dict, translation_id: str, 
                               report_text: str, file_type: str, validation_result: Dict):
@@ -32,32 +35,40 @@ class FeedbackManager:
         """
         # 檢查是否已提交回饋
         if translation_id in st.session_state.get('feedback_submitted_ids', set()):
-            st.info(lang.get('feedback_already', '已提交過回饋'))
+            st.info(f"✅ {lang.get('feedback_already', '已提交過回饋')}")
             return
         
         st.markdown('<div class="feedback-container">', unsafe_allow_html=True)
         st.markdown(f"#### {lang['feedback_title']}")
         
         # 快速回饋按鈕
-        self._render_quick_feedback(lang, translation_id)
+        self._render_quick_feedback(lang, translation_id, report_text, file_type, validation_result)
         
         # 詳細回饋表單
-        self._render_detailed_feedback_form(lang, translation_id, report_text, file_type, validation_result)
+        with st.expander("📝 提供詳細回饋", expanded=False):
+            self._render_detailed_feedback_form(lang, translation_id, report_text, file_type, validation_result)
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    def _render_quick_feedback(self, lang: Dict, translation_id: str):
+    def _render_quick_feedback(self, lang: Dict, translation_id: str, 
+                             report_text: str, file_type: str, validation_result: Dict):
         """渲染快速回饋按鈕"""
         st.markdown(f"**{lang['feedback_helpful']}**")
         col1, col2 = st.columns(2)
         
         with col1:
             if st.button("👍 有幫助", key=f"helpful_yes_{translation_id}", use_container_width=True):
-                self._handle_quick_feedback(translation_id, "positive", lang)
+                self._handle_quick_feedback(
+                    translation_id, "positive", lang, 
+                    report_text, file_type, validation_result
+                )
         
         with col2:
             if st.button("👎 沒幫助", key=f"helpful_no_{translation_id}", use_container_width=True):
-                self._handle_quick_feedback(translation_id, "negative", lang)
+                self._handle_quick_feedback(
+                    translation_id, "negative", lang,
+                    report_text, file_type, validation_result
+                )
     
     def _render_detailed_feedback_form(self, lang: Dict, translation_id: str, 
                                      report_text: str, file_type: str, validation_result: Dict):
@@ -121,23 +132,38 @@ class FeedbackManager:
                     report_text, file_type, validation_result
                 )
     
-    def _handle_quick_feedback(self, translation_id: str, sentiment: str, lang: Dict):
+    def _handle_quick_feedback(self, translation_id: str, sentiment: str, lang: Dict,
+                             report_text: str, file_type: str, validation_result: Dict):
         """處理快速回饋"""
         feedback_data = {
             'translation_id': translation_id,
             'language': st.session_state.language,
             'feedback_type': 'quick',
             'sentiment': sentiment,
-            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'clarity_score': 0,  # 快速回饋不評分
+            'usefulness_score': 0,
+            'accuracy_score': 0,
+            'recommendation_score': 0,
+            'overall_satisfaction': 0,
+            'issues': '',
+            'suggestion': '',
+            'email': '',
+            'report_length': len(report_text),
+            'file_type': file_type,
+            'medical_terms_detected': len(validation_result.get('found_terms', [])),
+            'confidence_score': round(validation_result.get('confidence', 0), 2),
             'app_version': self.config.APP_VERSION
         }
         
-        if self._log_feedback(feedback_data):
+        success = self._log_feedback(feedback_data)
+        
+        if success:
+            # 標記為已提交
             st.session_state.feedback_submitted_ids.add(translation_id)
-            st.success(lang['feedback_submitted'])
+            st.success(f"✅ {lang['feedback_submitted']}")
             st.balloons()
         else:
-            st.warning("回饋提交失敗，但已保存本地記錄")
+            st.warning("⚠️ 回饋提交失敗，請稍後再試")
     
     def _handle_detailed_feedback(self, translation_id: str, lang: Dict, 
                                 clarity: int, usefulness: int, accuracy: int, 
@@ -145,50 +171,60 @@ class FeedbackManager:
                                 email: str, report_text: str, file_type: str, 
                                 validation_result: Dict):
         """處理詳細回饋"""
+        # 計算整體滿意度
+        overall_satisfaction = round((clarity + usefulness + accuracy) / 3, 2)
+        
         feedback_data = {
             'translation_id': translation_id,
             'language': st.session_state.language,
             'feedback_type': 'detailed',
+            'sentiment': 'positive' if overall_satisfaction >= 3.5 else 'negative',
             'clarity_score': clarity,
             'usefulness_score': usefulness,
             'accuracy_score': accuracy,
             'recommendation_score': recommendation,
-            'issues': ";".join(issues),
-            'suggestion': suggestion.strip(),
-            'email': email.strip(),
+            'overall_satisfaction': overall_satisfaction,
+            'issues': ';'.join(issues) if issues else '無',
+            'suggestion': suggestion.strip() if suggestion else '無',
+            'email': email.strip() if email else '',
             'report_length': len(report_text),
             'file_type': file_type,
             'medical_terms_detected': len(validation_result.get('found_terms', [])),
-            'confidence_score': validation_result.get('confidence', 0),
-            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'app_version': self.config.APP_VERSION,
-            'overall_satisfaction': self._calculate_overall_satisfaction(clarity, usefulness, accuracy)
+            'confidence_score': round(validation_result.get('confidence', 0), 2),
+            'app_version': self.config.APP_VERSION
         }
         
-        if self._log_feedback(feedback_data):
+        success = self._log_feedback(feedback_data)
+        
+        if success:
+            # 標記為已提交
             st.session_state.feedback_submitted_ids.add(translation_id)
-            st.success(lang['feedback_submitted'])
+            st.success(f"✅ {lang['feedback_submitted']}")
             st.balloons()
+            
+            # 顯示感謝信息
+            if overall_satisfaction >= 4:
+                st.info("🌟 感謝您的高度評價！我們會繼續努力提供更好的服務。")
+            elif overall_satisfaction < 3:
+                st.info("📝 感謝您的寶貴意見！我們會認真改進服務質量。")
         else:
-            st.warning("回饋提交失敗，但已保存本地記錄")
-    
-    def _calculate_overall_satisfaction(self, clarity: int, usefulness: int, accuracy: int) -> float:
-        """計算整體滿意度"""
-        return round((clarity + usefulness + accuracy) / 3, 2)
+            st.warning("⚠️ 回饋提交失敗，請稍後再試")
     
     def _log_feedback(self, feedback_data: Dict[str, Any]) -> bool:
         """記錄回饋到 Google Sheets"""
         try:
-            # 添加處理狀態標記
-            feedback_data['processing_status'] = 'feedback'
+            # 使用專門的回饋記錄函數
+            success = log_feedback_to_sheets(**feedback_data)
             
-            # 調用原有的記錄函數
-            log_to_google_sheets(**feedback_data)
-            logger.info(f"Feedback logged successfully for translation {feedback_data['translation_id']}")
-            return True
+            if success:
+                logger.info(f"Feedback logged successfully: {feedback_data['translation_id']}")
+            else:
+                logger.error(f"Failed to log feedback: {feedback_data['translation_id']}")
+            
+            return success
             
         except Exception as e:
-            logger.error(f"回饋記錄失敗: {e}")
+            logger.error(f"回饋記錄異常: {e}", exc_info=True)
             return False
     
     def get_feedback_stats(self) -> Dict[str, Any]:
@@ -221,6 +257,7 @@ class FeedbackManager:
         """導出回饋摘要（用於分析）"""
         return {
             'session_id': st.session_state.get('user_session_id', 'unknown'),
+            'device_id': st.session_state.get('device_id', 'unknown'),
             'feedback_stats': self.get_feedback_stats(),
             'submitted_ids': list(st.session_state.get('feedback_submitted_ids', set())),
             'export_time': time.strftime('%Y-%m-%d %H:%M:%S')
