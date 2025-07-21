@@ -536,3 +536,214 @@ class UIComponents:
             except Exception as e:
                 st.error(f"❌ Logo 加載失敗: {e}")
                 st.text("請檢查 assets/llogo 文件是否存在且格式正確")
+    # 將以下方法添加到 UIComponents 類中：
+
+    def render_usage_tracker_enhanced(self, lang: Dict, usage_stats: Dict) -> int:
+        """渲染使用次數追蹤（增強版，包含設備限制）"""
+        remaining = usage_stats['remaining']
+        today_usage = usage_stats['today_usage']
+        is_locked = usage_stats['is_locked']
+        
+        st.markdown("### 📊 使用情況")
+        
+        # 顯示設備ID（部分隱藏）
+        st.caption(f"設備識別碼：{usage_stats['device_id']}")
+        
+        col1, col2, col3 = st.columns([3, 1, 1])
+        
+        with col1:
+            # 進度條
+            progress = today_usage / self.config.MAX_FREE_TRANSLATIONS
+            st.progress(min(progress, 1.0))
+            
+            if is_locked:
+                st.error("🔒 今日額度已用完")
+            elif remaining > 0:
+                st.caption(f"今日還可使用 {remaining} 次免費翻譯")
+            else:
+                st.caption("免費額度已用完")
+        
+        with col2:
+            if remaining > 0:
+                st.metric("剩餘", remaining, delta=None)
+            else:
+                st.metric("剩餘", 0, delta="已用完", delta_color="inverse")
+        
+        with col3:
+            st.metric("今日已用", f"{today_usage}/3")
+        
+        # 如果接近限制，顯示警告
+        if remaining == 1:
+            st.warning("⚠️ 您只剩下最後 1 次免費翻譯機會！")
+        
+        return remaining
+    
+    def render_quota_exceeded_enhanced(self, lang: Dict, reason: str):
+        """渲染額度超額提示（增強版）"""
+        st.error(f"🚫 {reason}")
+        
+        # 顯示詳細信息
+        with st.container():
+            st.markdown("""
+            ### 📅 額度說明
+            
+            **免費用戶限制：**
+            - 每個設備每天最多 3 次翻譯
+            - 額度在每日午夜（澳洲東部時間）重置
+            - 刷新頁面不會重置額度
+            
+            **💡 小提示：**
+            明天您將獲得新的 3 次免費翻譯機會！
+            """)
+        
+        # 付費選項
+        with st.expander("💎 需要更多翻譯？", expanded=True):
+            st.markdown("""
+            #### 💼 專業版功能：
+            
+            ✅ **無限次翻譯** - 不再有每日限制  
+            ✅ **批量處理** - 一次上傳多個文件  
+            ✅ **優先處理** - 更快的翻譯速度  
+            ✅ **歷史記錄** - 查看所有翻譯記錄  
+            ✅ **API 接入** - 整合到您的系統  
+            
+            #### 📞 聯繫我們：
+            📧 **Email**: support@radiai.care  
+            🌐 **官網**: www.radiai.care  
+            📱 **服務時間**: 週一至週五 9:00-17:00 (AEST)
+            """)
+            
+            if st.button("📧 發送諮詢郵件", use_container_width=True):
+                st.markdown("[點擊這裡發送郵件](mailto:support@radiai.care?subject=RadiAI.Care專業版諮詢)")
+    
+    def render_completion_status_enhanced(self, lang: Dict, usage_stats: Dict):
+        """渲染完成狀態（增強版）"""
+        remaining = usage_stats['remaining']
+        
+        if remaining > 0:
+            st.success(f"{lang['translation_complete']} {remaining} {lang['translation_remaining']}")
+        else:
+            st.balloons()
+            st.success("🌟 您已用完今日所有免費翻譯！感謝使用 RadiAI.Care")
+            st.info("💡 明天將重置您的免費額度，記得回來使用！")
+    
+    def _render_text_input(self, lang: Dict) -> Tuple[str, str]:
+        """渲染文本輸入區域（安全增強版）"""
+        st.markdown("#### 📝 輸入報告內容")
+        
+        # 添加安全提示
+        with st.expander("🔒 隱私保護提示", expanded=False):
+            st.markdown("""
+            **保護您的隱私：**
+            - 建議移除姓名、身份證號等個人信息
+            - 不要包含地址、電話等聯繫方式
+            - 我們不會存儲您的報告內容
+            """)
+        
+        report_text = st.text_area(
+            lang["input_placeholder"],
+            height=250,
+            placeholder="例如：CHEST CT SCAN\nCLINICAL HISTORY: ...\nFINDINGS: ...\nIMPRESSION: ...",
+            label_visibility="collapsed",
+            max_chars=self.config.MAX_TEXT_LENGTH
+        )
+        
+        # 實時內容分析（增強版）
+        if report_text:
+            from utils.translator import Translator
+            from utils.security import SecurityManager
+            
+            translator = Translator()
+            security = SecurityManager()
+            
+            # 安全檢查
+            safety_check = security.check_content_safety(report_text)
+            
+            # 顯示安全警告
+            if safety_check['has_sensitive_data']:
+                st.warning("⚠️ 檢測到可能的個人信息，建議移除後再翻譯")
+            
+            # 內容驗證
+            validation = translator.validate_content(report_text)
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.caption(f"字符數: {len(report_text)}")
+            with col2:
+                st.caption(f"醫學術語: {len(validation['found_terms'])}")
+            with col3:
+                confidence = validation['confidence']
+                confidence_color = "🟢" if confidence > 0.7 else "🟡" if confidence > 0.4 else "🔴"
+                st.caption(f"信心度: {confidence_color} {confidence:.1%}")
+            with col4:
+                safety_icon = "🔒" if not safety_check['has_sensitive_data'] else "⚠️"
+                st.caption(f"隱私: {safety_icon}")
+        
+        return report_text, "manual"
+    
+    def _process_uploaded_file(self, uploaded_file, lang: Dict) -> Tuple[str, str]:
+        """處理上傳的文件（安全增強版）"""
+        file_extension = uploaded_file.name.lower().split('.')[-1]
+        
+        # 安全檢查文件名
+        from utils.security import SecurityManager
+        security = SecurityManager()
+        safe_filename = security.sanitize_filename(uploaded_file.name)
+        
+        if safe_filename != uploaded_file.name:
+            st.warning("⚠️ 文件名已被安全處理")
+        
+        with st.spinner("🔄 處理文件中..."):
+            # 先進行安全驗證
+            file_content = uploaded_file.getvalue()
+            is_safe, error_msg = security.validate_file_content(file_content, file_extension)
+            
+            if not is_safe:
+                st.error(f"❌ 文件安全檢查失敗：{error_msg}")
+                return "", "failed"
+            
+            # 提取文本
+            extracted_text, processing_info = self.file_handler.extract_text(uploaded_file)
+            
+            if extracted_text:
+                # 對提取的文本進行消毒
+                extracted_text = security.sanitize_input(extracted_text)
+                
+                st.success(f"✅ {lang['file_success']}")
+                
+                # 文件資訊顯示
+                file_info = processing_info.get('file_info', {})
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.caption(f"📁 {safe_filename}")
+                with col2:
+                    st.caption(f"📏 {file_info.get('size_kb', 0)} KB")
+                with col3:
+                    st.caption(f"📝 {len(extracted_text)} 字符")
+                
+                # 內容預覽
+                with st.expander("👀 預覽內容", expanded=False):
+                    preview = (extracted_text[:self.config.PREVIEW_LENGTH] + "...") if len(extracted_text) > self.config.PREVIEW_LENGTH else extracted_text
+                    st.text_area("", value=preview, height=120, disabled=True)
+                    
+                    # 內容驗證結果
+                    from utils.translator import Translator
+                    translator = Translator()
+                    validation = translator.validate_content(extracted_text)
+                    
+                    if validation['found_terms']:
+                        st.success(f"✅ 檢測到 {len(validation['found_terms'])} 個醫學術語")
+                    else:
+                        st.warning("⚠️ 未檢測到明顯的醫學術語")
+                    
+                    # 安全檢查結果
+                    safety_check = security.check_content_safety(extracted_text)
+                    if safety_check['has_sensitive_data']:
+                        st.warning("⚠️ 文件中可能包含個人信息，建議檢查")
+                
+                return extracted_text, file_extension
+            else:
+                error_msg = processing_info.get('error', '未知錯誤')
+                st.error(f"❌ {lang['file_error']}")
+                st.error(f"詳細錯誤：{error_msg}")
+                return "", "failed"
