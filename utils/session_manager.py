@@ -1,12 +1,18 @@
 """
 RadiAI.Care 會話狀態管理器
 統一管理所有 Streamlit session state 變數
+包含防止刷新濫用的機制
 """
 
 import streamlit as st
 import time
 import uuid
+import hashlib
+import json
 from typing import Dict, Any, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class SessionManager:
     """會話狀態管理器"""
@@ -21,12 +27,18 @@ class SessionManager:
         'user_session_id': lambda: str(uuid.uuid4())[:8],
         'app_start_time': lambda: time.time(),
         'translation_history': list,
-        'last_activity': lambda: time.time()
+        'last_activity': lambda: time.time(),
+        'browser_fingerprint': None,
+        'device_id': None,
+        'used_translations': dict,  # 記錄已使用的翻譯
+        'daily_usage': dict,  # 每日使用記錄
+        'is_quota_locked': False,  # 是否鎖定配額
+        'quota_lock_time': None  # 配額鎖定時間
     }
     
     def __init__(self):
         """初始化會話管理器"""
-        pass
+        self.storage_key = "radiai_usage_data"
     
     def init_session_state(self):
         """初始化所有會話狀態變數"""
@@ -36,110 +48,220 @@ class SessionManager:
                     st.session_state[key] = default_value()
                 else:
                     st.session_state[key] = default_value
-    
-    def get_session_value(self, key: str, default: Any = None) -> Any:
-        """獲取會話狀態值"""
-        return st.session_state.get(key, default)
-    
-    def set_session_value(self, key: str, value: Any):
-        """設置會話狀態值"""
-        st.session_state[key] = value
-    
-    def update_activity(self):
-        """更新最後活動時間"""
-        st.session_state.last_activity = time.time()
-    
-    def add_translation_record(self, translation_id: str, text_length: int, language: str):
-        """添加翻譯記錄到歷史"""
-        if 'translation_history' not in st.session_state:
-            st.session_state.translation_history = []
         
-        record = {
-            'id': translation_id,
-            'timestamp': time.time(),
-            'text_length': text_length,
-            'language': language
-        }
+        # 初始化持久化存儲
+        self._init_persistent_storage()
         
-        st.session_state.translation_history.append(record)
+        # 生成或獲取設備ID
+        self._init_device_id()
         
-        # 限制歷史記錄數量
-        if len(st.session_state.translation_history) > 50:
-            st.session_state.translation_history = st.session_state.translation_history[-50:]
+        # 檢查配額狀態
+        self._check_quota_status()
     
-    def get_session_duration(self) -> int:
-        """獲取會話持續時間（分鐘）"""
-        if 'app_start_time' in st.session_state:
-            return int((time.time() - st.session_state.app_start_time) / 60)
-        return 0
+    def _init_persistent_storage(self):
+        """初始化持久化存儲（使用瀏覽器特徵）"""
+        try:
+            # 嘗試從瀏覽器獲取存儲的數據
+            if 'browser_storage' not in st.session_state:
+                st.session_state.browser_storage = {}
+            
+            # 生成瀏覽器指紋
+            self._generate_browser_fingerprint()
+            
+        except Exception as e:
+            logger.error(f"初始化持久化存儲失敗: {e}")
     
-    def get_translation_stats(self) -> Dict[str, Any]:
-        """獲取翻譯統計信息"""
-        history = st.session_state.get('translation_history', [])
+    def _generate_browser_fingerprint(self):
+        """生成瀏覽器指紋（基於多個因素）"""
+        try:
+            # 收集瀏覽器特徵
+            components = []
+            
+            # 使用會話ID和時間戳
+            components.append(st.session_state.user_session_id)
+            
+            # 添加用戶代理信息（如果可用）
+            # 注意：Streamlit 不直接提供用戶代理，這裡使用替代方案
+            components.append(str(time.time()))
+            
+            # 生成指紋
+            fingerprint_str = "_".join(components)
+            fingerprint = hashlib.sha256(fingerprint_str.encode()).hexdigest()[:16]
+            
+            st.session_state.browser_fingerprint = fingerprint
+            
+        except Exception as e:
+            logger.error(f"生成瀏覽器指紋失敗: {e}")
+            st.session_state.browser_fingerprint = str(uuid.uuid4())[:16]
+    
+    def _init_device_id(self):
+        """初始化設備ID（持久化標識）"""
+        if st.session_state.device_id is None:
+            # 嘗試從本地存儲獲取
+            stored_id = self._get_stored_device_id()
+            
+            if stored_id:
+                st.session_state.device_id = stored_id
+            else:
+                # 生成新的設備ID
+                new_id = self._generate_device_id()
+                st.session_state.device_id = new_id
+                self._store_device_id(new_id)
+    
+    def _generate_device_id(self) -> str:
+        """生成唯一的設備ID"""
+        components = [
+            st.session_state.browser_fingerprint or "unknown",
+            str(time.time()),
+            str(uuid.uuid4())
+        ]
         
-        if not history:
-            return {
-                'total_translations': 0,
-                'total_characters': 0,
-                'session_duration': self.get_session_duration()
+        device_str = "_".join(components)
+        return hashlib.sha256(device_str.encode()).hexdigest()[:32]
+    
+    def _get_stored_device_id(self) -> Optional[str]:
+        """從存儲中獲取設備ID"""
+        # 在實際部署中，這裡應該使用 cookies 或 localStorage
+        # 由於 Streamlit 的限制，我們使用會話狀態模擬
+        return st.session_state.get('stored_device_id')
+    
+    def _store_device_id(self, device_id: str):
+        """存儲設備ID"""
+        st.session_state.stored_device_id = device_id
+    
+    def _check_quota_status(self):
+        """檢查配額狀態"""
+        device_id = st.session_state.device_id
+        
+        # 獲取今天的日期
+        today = time.strftime('%Y-%m-%d')
+        
+        # 檢查每日使用記錄
+        if today not in st.session_state.daily_usage:
+            st.session_state.daily_usage[today] = {}
+        
+        # 檢查設備使用記錄
+        device_usage = st.session_state.daily_usage[today].get(device_id, {
+            'count': 0,
+            'translations': [],
+            'first_use': None,
+            'last_use': None
+        })
+        
+        # 更新翻譯計數（防止刷新重置）
+        if device_usage['count'] >= 3:
+            st.session_state.translation_count = device_usage['count']
+            st.session_state.is_quota_locked = True
+            st.session_state.quota_lock_time = device_usage['last_use']
+        else:
+            # 如果設備有使用記錄，恢復計數
+            if device_usage['count'] > 0:
+                st.session_state.translation_count = device_usage['count']
+    
+    def can_use_translation(self) -> tuple[bool, str]:
+        """
+        檢查是否可以使用翻譯服務
+        
+        Returns:
+            tuple[bool, str]: (是否可以使用, 原因消息)
+        """
+        device_id = st.session_state.device_id
+        today = time.strftime('%Y-%m-%d')
+        
+        # 檢查是否被鎖定
+        if st.session_state.is_quota_locked:
+            return False, "您今日的免費額度已用完，請明天再來！"
+        
+        # 檢查設備每日使用量
+        if today in st.session_state.daily_usage:
+            device_usage = st.session_state.daily_usage[today].get(device_id, {})
+            if device_usage.get('count', 0) >= 3:
+                return False, "您今日的免費額度已用完（基於設備限制）"
+        
+        # 檢查會話使用量
+        if st.session_state.translation_count >= 3:
+            return False, "您的免費翻譯額度已用完"
+        
+        return True, "可以使用"
+    
+    def record_translation_usage(self, translation_id: str, text_hash: str):
+        """
+        記錄翻譯使用情況
+        
+        Args:
+            translation_id: 翻譯ID
+            text_hash: 文本哈希（用於防止重複翻譯相同內容）
+        """
+        device_id = st.session_state.device_id
+        today = time.strftime('%Y-%m-%d')
+        current_time = time.time()
+        
+        # 初始化今日記錄
+        if today not in st.session_state.daily_usage:
+            st.session_state.daily_usage[today] = {}
+        
+        # 初始化設備記錄
+        if device_id not in st.session_state.daily_usage[today]:
+            st.session_state.daily_usage[today][device_id] = {
+                'count': 0,
+                'translations': [],
+                'first_use': current_time,
+                'last_use': current_time,
+                'text_hashes': set()
             }
         
-        total_translations = len(history)
-        total_characters = sum(record['text_length'] for record in history)
+        device_usage = st.session_state.daily_usage[today][device_id]
         
-        return {
-            'total_translations': total_translations,
-            'total_characters': total_characters,
-            'session_duration': self.get_session_duration(),
-            'average_length': total_characters // total_translations if total_translations > 0 else 0
-        }
-    
-    def clear_session(self):
-        """清除所有會話狀態"""
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        self.init_session_state()
-    
-    def is_feedback_submitted(self, translation_id: str) -> bool:
-        """檢查是否已提交回饋"""
-        submitted_ids = st.session_state.get('feedback_submitted_ids', set())
-        return translation_id in submitted_ids
-    
-    def mark_feedback_submitted(self, translation_id: str):
-        """標記回饋已提交"""
-        if 'feedback_submitted_ids' not in st.session_state:
-            st.session_state.feedback_submitted_ids = set()
-        st.session_state.feedback_submitted_ids.add(translation_id)
-    
-    def get_remaining_translations(self, max_translations: int = 3) -> int:
-        """獲取剩餘翻譯次數"""
-        used = st.session_state.get('translation_count', 0)
-        return max(0, max_translations - used)
-    
-    def increment_translation_count(self):
-        """增加翻譯計數"""
-        if 'translation_count' not in st.session_state:
-            st.session_state.translation_count = 0
+        # 檢查是否重複翻譯相同內容
+        if text_hash in device_usage.get('text_hashes', set()):
+            logger.warning(f"檢測到重複翻譯相同內容: {text_hash}")
+            return
+        
+        # 記錄使用
+        device_usage['count'] += 1
+        device_usage['translations'].append({
+            'id': translation_id,
+            'time': current_time,
+            'text_hash': text_hash
+        })
+        device_usage['last_use'] = current_time
+        device_usage.setdefault('text_hashes', set()).add(text_hash)
+        
+        # 更新會話計數
         st.session_state.translation_count += 1
+        
+        # 檢查是否需要鎖定
+        if device_usage['count'] >= 3:
+            st.session_state.is_quota_locked = True
+            st.session_state.quota_lock_time = current_time
+            logger.info(f"設備 {device_id} 已達到每日限額")
     
-    def get_user_session_id(self) -> str:
-        """獲取用戶會話ID"""
-        return st.session_state.get('user_session_id', 'unknown')
-    
-    def set_language(self, language: str):
-        """設置語言並重新運行"""
-        st.session_state.language = language
-        self.update_activity()
-        st.rerun()
-    
-    def export_session_data(self) -> Dict[str, Any]:
-        """導出會話數據（用於調試或分析）"""
-        return {
-            'user_session_id': self.get_user_session_id(),
-            'language': st.session_state.get('language'),
-            'translation_count': st.session_state.get('translation_count', 0),
-            'session_duration': self.get_session_duration(),
-            'translation_stats': self.get_translation_stats(),
-            'last_activity': st.session_state.get('last_activity'),
-            'app_start_time': st.session_state.get('app_start_time')
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """獲取使用統計"""
+        device_id = st.session_state.device_id
+        today = time.strftime('%Y-%m-%d')
+        
+        stats = {
+            'session_count': st.session_state.translation_count,
+            'device_id': device_id[:8] + "****",  # 部分隱藏
+            'is_locked': st.session_state.is_quota_locked,
+            'today_usage': 0,
+            'remaining': 3 - st.session_state.translation_count
         }
+        
+        if today in st.session_state.daily_usage:
+            device_usage = st.session_state.daily_usage[today].get(device_id, {})
+            stats['today_usage'] = device_usage.get('count', 0)
+            stats['remaining'] = max(0, 3 - device_usage.get('count', 0))
+        
+        return stats
+    
+    def generate_text_hash(self, text: str) -> str:
+        """生成文本哈希值"""
+        # 正規化文本（移除空白差異）
+        normalized = " ".join(text.strip().split())
+        return hashlib.md5(normalized.encode()).hexdigest()
+    
+    def clear_expired_data(self):
+        """清理過期數據（保留7天）"""
+        current_date = time.strftime('%Y-%m-%d')
