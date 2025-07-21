@@ -5,7 +5,7 @@ RadiAI.Care ‒ SessionManager (強化版)
 ‧ 端到端 JS ⇄ Python 溝通（LocalStorage 與 Browser Fingerprint）
 ‧ 基本安全檢查：無痕模式、指紋缺失、多重異常即降額
 """
-from pathlib import Path        # ← 新增
+
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
+from pathlib import Path        # ← 新增
 
 import streamlit as st
 import streamlit.components.v1 as components
