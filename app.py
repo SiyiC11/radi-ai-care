@@ -18,10 +18,7 @@ from utils.exceptions import (  # 新增異常處理
 )
 from components.ui_components import UIComponents
 from log_to_sheets import log_to_google_sheets
-from config.settings import AppConfig, UIText, inject_css
 
-# 最前端就注入一次即可
-inject_css()
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
