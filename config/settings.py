@@ -41,6 +41,7 @@ class AppConfig:
     OPENAI_TEMPERATURE: float = 0.2
     OPENAI_MAX_TOKENS: int = 2048
     OPENAI_TIMEOUT: int = 60            # 秒
+    APP_VERSION: str = "v0.4.0"   # 隨時可改，語意化版本號或 Git commit 短 SHA
 # ────────────────────────────────────────────────────
 # 2. 多語系介面文字
 # ────────────────────────────────────────────────────
