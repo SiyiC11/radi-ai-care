@@ -27,7 +27,8 @@ class AppConfig:
     # 工作表名稱
     usage_log_sheet: str = "usagelog"
     feedback_sheet: str = "feedback"
-
+    SUPPORTED_FILE_TYPES: Tuple[str, ...] = ("pdf", "txt", "docx", "doc")
+    FILE_SIZE_LIMIT_MB: int = 10            # 依需求調整 (單位：MB)
 
 # ────────────────────────────────────────────────────
 # 2. 多語系介面文字
