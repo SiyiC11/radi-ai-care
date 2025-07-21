@@ -10,6 +10,12 @@ from utils.session_manager import SessionManager
 from utils.file_handler import FileHandler
 from utils.translator import Translator
 from utils.feedback_manager import FeedbackManager
+from utils.security import SecurityManager  # 新增安全管理
+from utils.exceptions import (  # 新增異常處理
+    RadiAIException, QuotaExceededException, 
+    ContentTooShortException, NoMedicalContentException,
+    ExceptionHandler
+)
 from components.ui_components import UIComponents
 from log_to_sheets import log_to_google_sheets
 
@@ -18,7 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RadiAIApp:
-    """RadiAI.Care 主應用類"""
+    """RadiAI.Care 主應用類（安全增強版）"""
     
     def __init__(self):
         self.config = AppConfig()
@@ -27,15 +33,15 @@ class RadiAIApp:
         self.translator = Translator()
         self.feedback_manager = FeedbackManager()
         self.ui = UIComponents()
+        self.security_manager = SecurityManager()  # 新增安全管理器
         
     def initialize(self):
         """初始化應用"""
         # 頁面配置
         try:
-            # 嘗試獲取 logo 用於頁面圖標
+            # 使用快取的 logo
             try:
                 logo_data, mime_type = self.config.get_logo_base64()
-                # 如果是圖片格式，不能直接用作頁面圖標，使用默認
                 page_icon = self.config.APP_ICON
             except Exception as e:
                 logger.warning(f"Logo 加載警告: {e}")
@@ -48,7 +54,7 @@ class RadiAIApp:
                 initial_sidebar_state="collapsed"
             )
             
-            # 初始化會話狀態
+            # 初始化會話狀態（包含防刷新機制）
             self.session_manager.init_session_state()
             
             # 載入 CSS
@@ -58,7 +64,6 @@ class RadiAIApp:
             
         except Exception as e:
             logger.error(f"應用初始化失敗: {e}")
-            # 提供最小初始化
             st.set_page_config(
                 page_title="RadiAI.Care",
                 page_icon="🏥",
@@ -70,6 +75,9 @@ class RadiAIApp:
         try:
             self.initialize()
             
+            # 檢查配額狀態
+            can_use, reason = self.session_manager.can_use_translation()
+            
             # 獲取當前語言配置
             lang = UIText.get_language_config(st.session_state.language)
             
@@ -80,10 +88,6 @@ class RadiAIApp:
                 # 渲染標題和 Logo
                 self.ui.render_header(lang)
                 
-                # 開發模式：顯示 Logo 調試信息
-                if st.secrets.get("DEBUG_MODE", False):
-                    self.ui.render_logo_debug_info()
-                
                 # 語言選擇
                 self.ui.render_language_selection(lang)
                 
@@ -93,12 +97,17 @@ class RadiAIApp:
                 # 法律聲明
                 self.ui.render_disclaimer(lang)
                 
-                # 使用次數追蹤
-                remaining = self.ui.render_usage_tracker(lang)
+                # 使用次數追蹤（改進版）
+                usage_stats = self.session_manager.get_usage_stats()
+                remaining = self.ui.render_usage_tracker_enhanced(lang, usage_stats)
                 
-                # 檢查額度
-                if remaining <= 0:
-                    self.ui.render_quota_exceeded(lang)
+                # 檢查是否可以使用服務
+                if not can_use:
+                    self.ui.render_quota_exceeded_enhanced(lang, reason)
+                    # 仍然顯示底部資訊
+                    self.ui.render_footer(lang)
+                    self.ui.render_version_info()
+                    st.markdown('</div>', unsafe_allow_html=True)
                     return
                 
                 # 輸入區塊
@@ -106,7 +115,7 @@ class RadiAIApp:
                 
                 # 翻譯按鈕和處理
                 if self.ui.render_translate_button(lang, report_text):
-                    self._handle_translation(report_text, file_type, lang)
+                    self._handle_translation_secure(report_text, file_type, lang)
                 
                 # 底部資訊
                 self.ui.render_footer(lang)
@@ -119,64 +128,117 @@ class RadiAIApp:
         except Exception as e:
             self._handle_error(e)
     
-    def _handle_translation(self, report_text: str, file_type: str, lang: dict):
-        """處理翻譯請求"""
-        # 內容驗證
-        validation_result = self.translator.validate_content(report_text)
-        
-        if not validation_result["is_valid"]:
-            st.warning(f"⚠️ {lang['warning_no_medical']}")
-        
-        # 生成翻譯 ID
-        translation_id = str(uuid.uuid4())
-        
-        # 處理進度顯示
-        with st.container():
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+    def _handle_translation_secure(self, report_text: str, file_type: str, lang: dict):
+        """處理翻譯請求（安全增強版）"""
+        try:
+            # 1. 輸入消毒
+            sanitized_text = self.security_manager.sanitize_input(report_text)
             
-            try:
-                # 執行翻譯
-                result = self.translator.translate_with_progress(
-                    report_text, lang["code"], progress_bar, status_text
+            if sanitized_text != report_text:
+                st.info("ℹ️ 已對輸入內容進行安全處理")
+                report_text = sanitized_text
+            
+            # 2. 檢查文本哈希（防止重複翻譯）
+            text_hash = self.session_manager.generate_text_hash(report_text)
+            
+            # 3. 內容驗證
+            validation_result = self.translator.validate_content(report_text)
+            
+            if not validation_result["is_valid"]:
+                if len(report_text) < self.config.MIN_TEXT_LENGTH:
+                    raise ContentTooShortException()
+                elif len(validation_result["found_terms"]) < 2:
+                    raise NoMedicalContentException()
+                else:
+                    st.warning(f"⚠️ {lang['warning_no_medical']}")
+            
+            # 4. 再次檢查配額（雙重檢查）
+            can_use, reason = self.session_manager.can_use_translation()
+            if not can_use:
+                raise QuotaExceededException(
+                    used=st.session_state.translation_count,
+                    limit=self.config.MAX_FREE_TRANSLATIONS
                 )
+            
+            # 5. 生成翻譯 ID
+            translation_id = str(uuid.uuid4())
+            
+            # 6. 處理進度顯示
+            with st.container():
+                progress_bar = st.progress(0)
+                status_text = st.empty()
                 
-                if result["success"]:
-                    # 顯示結果
-                    self.ui.render_translation_result(result["content"], lang)
+                try:
+                    # 記錄開始時間
+                    start_time = time.time()
                     
-                    # 更新計數器
-                    st.session_state.translation_count += 1
-                    st.session_state.last_translation_id = translation_id
-                    
-                    # 記錄使用情況
-                    self._log_usage(report_text, file_type, "success", translation_id, validation_result)
-                    
-                    # 顯示完成狀態
-                    remaining = self.config.MAX_FREE_TRANSLATIONS - st.session_state.translation_count
-                    self.ui.render_completion_status(lang, remaining)
-                    
-                    # 渲染回饋區塊
-                    self.feedback_manager.render_feedback_section(
-                        lang, translation_id, report_text, file_type, validation_result
+                    # 執行翻譯
+                    result = self.translator.translate_with_progress(
+                        report_text, lang["code"], progress_bar, status_text
                     )
                     
-                else:
-                    st.error(f"❌ {result['error']}")
-                    self._log_usage(report_text, file_type, "error", translation_id, validation_result, result['error'])
+                    if result["success"]:
+                        # 顯示結果
+                        self.ui.render_translation_result(result["content"], lang)
+                        
+                        # 記錄使用（包含防刷新機制）
+                        self.session_manager.record_translation_usage(translation_id, text_hash)
+                        
+                        # 記錄到 Google Sheets
+                        processing_time = int((time.time() - start_time) * 1000)
+                        self._log_usage(
+                            report_text, file_type, "success", translation_id, 
+                            validation_result, processing_time=processing_time
+                        )
+                        
+                        # 顯示完成狀態
+                        updated_stats = self.session_manager.get_usage_stats()
+                        self.ui.render_completion_status_enhanced(lang, updated_stats)
+                        
+                        # 渲染回饋區塊（修復版）
+                        self.feedback_manager.render_feedback_section(
+                            lang, translation_id, report_text, file_type, validation_result
+                        )
+                        
+                    else:
+                        raise RadiAIException(
+                            message=result.get('error', '翻譯失敗'),
+                            user_message=f"❌ {result.get('error', '翻譯過程中發生錯誤')}"
+                        )
+                        
+                except Exception as e:
+                    # 使用統一的異常處理
+                    error_info = ExceptionHandler.handle_exception(e)
+                    st.error(error_info['message'])
                     
-            except Exception as e:
-                st.error(f"❌ 翻譯過程中發生錯誤：{str(e)}")
-                self._log_usage(report_text, file_type, "error", translation_id, validation_result, str(e))
+                    self._log_usage(
+                        report_text, file_type, "error", translation_id, 
+                        validation_result, error=str(e)
+                    )
+                
+                finally:
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+        except RadiAIException as e:
+            # 處理自定義異常
+            st.error(f"❌ {e.user_message}")
+            logger.error(f"Translation error: {e}")
             
-            finally:
-                progress_bar.empty()
-                status_text.empty()
+        except Exception as e:
+            # 處理未預期的異常
+            user_message = ExceptionHandler.get_user_friendly_message(e)
+            st.error(f"❌ {user_message}")
+            logger.exception("Unexpected error during translation")
     
     def _log_usage(self, report_text: str, file_type: str, status: str, 
-                   translation_id: str, validation_result: dict, error: str = None):
-        """記錄使用情況"""
+                   translation_id: str, validation_result: dict, 
+                   error: str = None, processing_time: int = 0):
+        """記錄使用情況（增強版）"""
         try:
+            # 遮蔽敏感數據
+            masked_text = self.security_manager.mask_sensitive_data(report_text[:200])
+            
             log_data = {
                 'language': st.session_state.language,
                 'report_length': len(report_text),
@@ -185,11 +247,14 @@ class RadiAIApp:
                 'translation_id': translation_id,
                 'medical_terms_count': len(validation_result.get('found_terms', [])),
                 'confidence_score': validation_result.get('confidence', 0),
-                'app_version': self.config.APP_VERSION
+                'app_version': self.config.APP_VERSION,
+                'latency_ms': processing_time,
+                'session_id': st.session_state.get('user_session_id', 'unknown'),
+                'device_id': st.session_state.get('device_id', 'unknown')[:8] + "****"
             }
             
             if error:
-                log_data['error'] = error
+                log_data['error'] = error[:200]  # 限制錯誤信息長度
                 
             log_to_google_sheets(**log_data)
             
@@ -197,16 +262,20 @@ class RadiAIApp:
             logger.warning(f"記錄使用情況失敗: {log_error}")
     
     def _handle_error(self, error: Exception):
-        """處理應用錯誤"""
+        """處理應用錯誤（增強版）"""
         logger.error(f"應用錯誤: {error}")
-        st.error("❌ 應用程式發生錯誤")
+        
+        # 使用異常處理器獲取用戶友好的錯誤信息
+        error_info = ExceptionHandler.handle_exception(error)
+        
+        st.error(f"❌ {error_info['message']}")
         
         with st.expander("🔧 故障排除", expanded=False):
             st.markdown(f"""
             ### 🔄 錯誤資訊：
             ```
-            錯誤類型: {type(error).__name__}
-            錯誤描述: {str(error)}
+            錯誤代碼: {error_info.get('error_code', 'UNKNOWN')}
+            錯誤描述: {error_info.get('message', str(error))}
             時間戳記: {time.strftime('%Y-%m-%d %H:%M:%S')}
             應用版本: {self.config.APP_VERSION}
             ```
@@ -238,7 +307,8 @@ class RadiAIApp:
                     "翻譯引擎": self._check_translator(),
                     "文件處理": self._check_file_handler(),
                     "UI 組件": self._check_ui_components(),
-                    "Logo 文件": self._check_logo()
+                    "Logo 快取": self._check_logo_cache(),
+                    "安全模塊": self._check_security()
                 }
                 
                 for component, status in components_status.items():
@@ -258,6 +328,12 @@ class RadiAIApp:
                 for service, status in network_status.items():
                     status_icon = "✅" if status else "❌"
                     st.text(f"{status_icon} {service}")
+                
+                # 顯示配額狀態
+                st.markdown("**📊 配額狀態：**")
+                usage_stats = self.session_manager.get_usage_stats()
+                st.text(f"今日已用: {usage_stats['today_usage']}/3")
+                st.text(f"剩餘次數: {usage_stats['remaining']}")
                     
         except Exception as e:
             st.error(f"系統檢查失敗: {e}")
@@ -290,11 +366,27 @@ class RadiAIApp:
         except:
             return False
     
-    def _check_logo(self) -> bool:
-        """檢查 Logo 文件"""
+    def _check_logo_cache(self) -> bool:
+        """檢查 Logo 快取"""
         try:
+            # 檢查快取是否生效
             logo_data, mime_type = self.config.get_logo_base64()
-            return len(logo_data) > 0
+            # 第二次調用應該從快取獲取（很快）
+            start_time = time.time()
+            logo_data2, mime_type2 = self.config.get_logo_base64()
+            load_time = time.time() - start_time
+            # 如果從快取加載，應該小於 0.001 秒
+            return load_time < 0.001 and logo_data == logo_data2
+        except:
+            return False
+    
+    def _check_security(self) -> bool:
+        """檢查安全模塊"""
+        try:
+            # 測試消毒功能
+            test_text = "<script>alert('test')</script>Hello"
+            sanitized = self.security_manager.sanitize_input(test_text)
+            return sanitized == "Hello" and hasattr(self.security_manager, 'validate_file_content')
         except:
             return False
     
@@ -339,7 +431,9 @@ def main():
         1. **檢查文件結構**：確保所有必要文件都存在
         2. **檢查環境變量**：確保 OPENAI_API_KEY 和 GOOGLE_SHEET_SECRET_B64 已設置
         3. **檢查依賴包**：運行 `pip install -r requirements.txt`
-        4. **檢查 Logo 文件**：確保 assets/llogo 文件存在且可讀
+        4. **檢查新增模塊**：
+           - `utils/security.py` - 安全管理模塊
+           - `utils/exceptions.py` - 異常處理模塊
         5. **聯繫支援**：發送錯誤信息至 support@radiai.care
         
         ### 🔍 快速診斷：
@@ -353,6 +447,10 @@ def main():
             "config/settings.py",
             "utils/translator.py", 
             "utils/file_handler.py",
+            "utils/session_manager.py",
+            "utils/feedback_manager.py",
+            "utils/security.py",  # 新增
+            "utils/exceptions.py",  # 新增
             "components/ui_components.py",
             "log_to_sheets.py"
         ]
