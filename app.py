@@ -438,14 +438,14 @@ class RadiAIApp:
             except Exception as e:
                 st.sidebar.error(f"❌ 錯誤: {e}")
 
-# 在 main() 函數中調用
-def main():
-    try:
-        app = RadiAIApp()
-        app.run()
-        debug_feedback_in_app()  # 添加這行
-    except Exception as e:
-        # ... 現有的錯誤處理
+    # 在 main() 函數中調用
+    def main():
+        try:
+            app = RadiAIApp()
+            app.run()
+            debug_feedback_in_app()  # 添加這行
+        except Exception as e:
+            # ... 現有的錯誤處理
 def main():
     """主函數"""
     try:
