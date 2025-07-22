@@ -1,4 +1,4 @@
-# 完整的 app.py 修復代碼
+# 完整的 app.py 修復代碼 - 包含延遲測試
 # ===========================
 
 import streamlit as st
@@ -124,7 +124,7 @@ class RadiAIApp:
             self._handle_error(e)
     
     def _handle_translation(self, report_text: str, file_type: str, lang: dict):
-        """處理翻譯請求"""
+        """處理翻譯請求 - 修復版含延遲測試"""
         try:
             # 1. 內容驗證
             validation_result = self.translator.validate_content(report_text)
@@ -138,7 +138,7 @@ class RadiAIApp:
                 else:
                     st.warning(f"⚠️ {lang['warning_no_medical']}")
             
-            # 2. 檢查配額
+            # 2. 檢查配額（基於 UsageLog Sheet）
             can_use, reason = self.session_manager.can_use_translation()
             if not can_use:
                 st.error(f"❌ {reason}")
@@ -148,14 +148,13 @@ class RadiAIApp:
             translation_id = str(uuid.uuid4())
             text_hash = self.session_manager.generate_text_hash(report_text)
             
-            # 4. 預先記錄使用次數（在翻譯開始前）
+            # 4. 樂觀更新本地狀態（實際記錄在翻譯成功後）
             self.session_manager.record_translation_usage(translation_id, text_hash)
             
-            # 5. 立即更新並顯示使用次數扣除
+            # 5. 顯示更新後的使用次數
             updated_stats = self.session_manager.get_usage_stats()
             remaining_after_deduction = updated_stats['remaining']
             
-            # 顯示扣除後的使用次數
             if lang["code"] == "traditional_chinese":
                 deduction_msg = f"✅ 已開始翻譯！剩餘使用次數：{remaining_after_deduction}"
             else:
@@ -167,10 +166,11 @@ class RadiAIApp:
             st.markdown("### 📊 更新後使用狀況")
             self.ui.render_usage_tracker_enhanced(lang, updated_stats)
             
-            # 7. 處理進度顯示
+            # 7. 處理進度顯示和翻譯
             with st.container():
                 progress_bar = st.progress(0)
                 status_text = st.empty()
+                translation_success = False
                 
                 try:
                     # 記錄開始時間
@@ -182,18 +182,27 @@ class RadiAIApp:
                     )
                     
                     if result["success"]:
-                        # 顯示結果
-                        self.ui.render_translation_result(result["content"], lang)
-                        
-                        # 記錄到 Google Sheets（成功狀態）
+                        # 翻譯成功 - 記錄到 UsageLog
                         processing_time = int((time.time() - start_time) * 1000)
-                        self._log_usage(
+                        usage_logged = self._log_usage_to_sheets(
                             report_text, file_type, "success", translation_id, 
                             validation_result, processing_time=processing_time
                         )
-                        time.sleep(7)  # 等待 7 秒
-                        print("延遲測試：UsageLog 寫入後等待 5 秒")
-                        # 顯示完成狀態（更新後的統計）
+                        
+                        if not usage_logged:
+                            logger.warning("使用記錄到 UsageLog 失敗，但翻譯繼續")
+                        
+                        # ===== 🧪 延遲測試 =====
+                        st.info("⏳ 延遲測試：等待 5 秒後再渲染回饋區塊...")
+                        time.sleep(5)  # 等待 5 秒
+                        logger.info("延遲測試：UsageLog 寫入後等待 5 秒完成")
+                        st.success("✅ 延遲完成，現在可以提交回饋")
+                        # ===== 延遲測試結束 =====
+                        
+                        # 顯示翻譯結果
+                        self.ui.render_translation_result(result["content"], lang)
+                        
+                        # 顯示完成狀態
                         final_stats = self.session_manager.get_usage_stats()
                         self.ui.render_completion_status_enhanced(lang, final_stats)
                         
@@ -202,23 +211,26 @@ class RadiAIApp:
                             lang, translation_id, report_text, file_type, validation_result
                         )
                         
+                        translation_success = True
+                        
                     else:
-                        # 翻譯失敗 - 恢復使用次數
+                        # 翻譯失敗 - 恢復使用次數並記錄錯誤
                         self._restore_usage_on_failure(translation_id)
                         st.error(f"❌ {result.get('error', '翻譯過程中發生錯誤')}")
                         
-                        # 記錄失敗到 Google Sheets
-                        self._log_usage(
+                        # 記錄失敗到 UsageLog
+                        self._log_usage_to_sheets(
                             report_text, file_type, "error", translation_id, 
                             validation_result, error=result.get('error', '未知錯誤')
                         )
                         
                 except Exception as e:
-                    # 翻譯異常 - 恢復使用次數
+                    # 翻譯異常 - 恢復使用次數並記錄錯誤
                     self._restore_usage_on_failure(translation_id)
                     st.error(f"❌ 翻譯過程中發生錯誤: {str(e)}")
                     
-                    self._log_usage(
+                    # 記錄異常到 UsageLog
+                    self._log_usage_to_sheets(
                         report_text, file_type, "error", translation_id, 
                         validation_result, error=str(e)
                     )
@@ -227,40 +239,32 @@ class RadiAIApp:
                     progress_bar.empty()
                     status_text.empty()
                     
+                    # 如果翻譯失敗，強制同步使用次數
+                    if not translation_success:
+                        self.session_manager.force_sync_usage()
+                    
         except Exception as e:
             st.error(f"❌ 處理翻譯請求時發生錯誤: {str(e)}")
             logger.exception("Translation handling error")
     
     def _restore_usage_on_failure(self, translation_id: str):
-        """翻譯失敗時恢復使用次數"""
+        """翻譯失敗時恢復使用次數 - 修復版"""
         try:
-            # 減少計數器
-            if st.session_state.translation_count > 0:
-                st.session_state.translation_count -= 1
-            
-            # 解除鎖定狀態
-            if st.session_state.translation_count < self.session_manager.daily_limit:
-                st.session_state.is_quota_locked = False
-            
-            # 從翻譯歷史中移除失敗的記錄
-            if 'translation_history' in st.session_state:
-                st.session_state.translation_history = [
-                    record for record in st.session_state.translation_history 
-                    if record.get('id') != translation_id
-                ]
-            
-            logger.info(f"已恢復使用次數，當前計數: {st.session_state.translation_count}")
+            # 調用 session manager 的恢復方法
+            self.session_manager.restore_usage_on_failure(translation_id)
             
             # 顯示恢復訊息
             st.info("✅ 翻譯失敗，使用次數已恢復")
             
+            logger.info(f"已恢復使用次數: {translation_id}")
+            
         except Exception as e:
             logger.error(f"恢復使用次數失敗: {e}")
     
-    def _log_usage(self, report_text: str, file_type: str, status: str, 
-                   translation_id: str, validation_result: dict, 
-                   error: str = None, processing_time: int = 0):
-        """記錄使用情況"""
+    def _log_usage_to_sheets(self, report_text: str, file_type: str, status: str, 
+                           translation_id: str, validation_result: dict, 
+                           error: str = None, processing_time: int = 0) -> bool:
+        """記錄使用情況到 UsageLog Sheet"""
         try:
             log_data = {
                 'language': st.session_state.language,
@@ -279,10 +283,19 @@ class RadiAIApp:
             if error:
                 log_data['error'] = error[:200]
                 
-            log_to_google_sheets(**log_data)
+            # 使用修復版的記錄函數
+            success = log_to_google_sheets(**log_data)
+            
+            if success:
+                logger.info(f"使用記錄到 UsageLog 成功: {status}")
+            else:
+                logger.error(f"使用記錄到 UsageLog 失敗: {status}")
+                
+            return success
             
         except Exception as log_error:
             logger.warning(f"記錄使用情況失敗: {log_error}")
+            return False
     
     def _handle_error(self, error: Exception):
         """處理應用錯誤"""
@@ -306,83 +319,118 @@ class RadiAIApp:
             4. **檢查網路連線**：確保網路連線穩定
             5. **聯繫技術支援**：發送錯誤資訊至 support@radiai.care
             """)
+
 def debug_feedback_in_app():
-    """在應用中添加調試工具"""
+    """在應用中添加調試工具 - 增強版"""
     if st.sidebar.checkbox("🔧 顯示調試工具"):
         st.sidebar.markdown("---")
-        st.sidebar.markdown("### 回饋調試")
+        st.sidebar.markdown("### 系統診斷")
         
-        if st.sidebar.button("🔍 診斷回饋功能"):
+        # 使用次數同步測試
+        if st.sidebar.button("🔄 強制同步使用次數"):
             try:
-                from log_to_sheets import GoogleSheetsLogger
+                from utils.session_manager import SessionManager
+                session_manager = SessionManager()
+                session_manager.force_sync_usage()
+                st.sidebar.success("✅ 使用次數已同步")
                 
-                logger = GoogleSheetsLogger()
-                if logger._initialize_client():
-                    if logger.feedback_worksheet:
-                        headers = logger.feedback_worksheet.row_values(1)
-                        st.sidebar.success(f"✅ Feedback工作表連接正常")
-                        st.sidebar.write(f"標題行: {len(headers)} 個欄位")
-                        st.sidebar.write(f"前5個標題: {headers[:5]}")
-                        
-                        # 檢查現有數據
-                        all_values = logger.feedback_worksheet.get_all_values()
-                        st.sidebar.info(f"📊 總行數: {len(all_values)}")
-                    else:
-                        st.sidebar.error("❌ Feedback工作表不存在")
-                else:
-                    st.sidebar.error("❌ 無法連接Google Sheets")
+                # 顯示同步後的信息
+                stats = session_manager.get_usage_stats()
+                st.sidebar.json(stats)
+                
             except Exception as e:
-                st.sidebar.error(f"❌ 錯誤: {e}")
-                st.sidebar.write(f"詳細錯誤: {str(e)}")
+                st.sidebar.error(f"❌ 同步失敗: {e}")
         
-        if st.sidebar.button("🧪 測試回饋提交"):
+        # 回饋系統診斷
+        if st.sidebar.button("🔍 診斷回饋系統"):
             try:
-                from log_to_sheets import log_feedback_to_sheets
-                import time
+                from log_to_sheets import diagnose_feedback_system
                 
-                test_data = {
-                    'translation_id': f'debug_test_{int(time.time())}',
-                    'language': '简体中文',
-                    'feedback_type': 'debug_test',
-                    'sentiment': 'positive',
-                    'clarity_score': 5,
-                    'usefulness_score': 5,
-                    'accuracy_score': 5,
-                    'recommendation_score': 10,
-                    'overall_satisfaction': 5.0,
-                    'issues': '調試測試',
-                    'suggestion': '調試建議',
-                    'email': 'debug@test.com',
-                    'report_length': 1000,
-                    'file_type': 'manual',
-                    'medical_terms_detected': 5,
-                    'confidence_score': 0.85,
-                    'app_version': 'v4.2-debug'
-                }
+                diagnosis = diagnose_feedback_system()
+                st.sidebar.success("✅ 診斷完成")
                 
-                # 顯示要提交的數據
-                st.sidebar.write("📤 提交數據:")
-                st.sidebar.json(test_data)
-                
-                # 嘗試提交
-                success = log_feedback_to_sheets(**test_data)
-                
-                if success:
-                    st.sidebar.success("✅ 測試提交成功！")
-                    st.sidebar.info(f"測試ID: {test_data['translation_id']}")
+                # 顯示關鍵信息
+                if diagnosis.get("worksheet_available"):
+                    st.sidebar.info("Feedback 工作表可用")
                 else:
-                    st.sidebar.error("❌ 測試提交失敗")
+                    st.sidebar.error("❌ Feedback 工作表不可用")
+                
+                with st.sidebar.expander("詳細診斷"):
+                    st.json(diagnosis)
+                    
+            except Exception as e:
+                st.sidebar.error(f"❌ 診斷失敗: {e}")
+        
+        # 終極回饋測試
+        if st.sidebar.button("🧪 終極回饋測試"):
+            try:
+                from log_to_sheets import test_feedback_logging_ultimate
+                
+                with st.sidebar.spinner("執行終極測試..."):
+                    results = test_feedback_logging_ultimate()
+                
+                success_count = sum(1 for r in results["results"] if r.get("success"))
+                total_count = len(results["results"])
+                
+                if success_count == total_count:
+                    st.sidebar.success(f"✅ 所有測試通過 ({success_count}/{total_count})")
+                else:
+                    st.sidebar.warning(f"⚠️ 部分測試失敗 ({success_count}/{total_count})")
+                
+                with st.sidebar.expander("測試詳情"):
+                    st.json(results)
                     
             except Exception as e:
                 st.sidebar.error(f"❌ 測試失敗: {e}")
+        
+        # 會話信息
+        if st.sidebar.button("📊 顯示會話信息"):
+            try:
+                from utils.session_manager import SessionManager
+                session_manager = SessionManager()
+                session_info = session_manager.get_session_info()
+                
+                st.sidebar.success("會話信息:")
+                st.sidebar.json(session_info)
+                
+            except Exception as e:
+                st.sidebar.error(f"❌ 獲取會話信息失敗: {e}")
+        
+        # === 延遲測試控制 ===
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🧪 延遲測試控制")
+        
+        # 顯示當前設置
+        current_delay = st.sidebar.slider(
+            "設置延遲秒數", 
+            min_value=0, 
+            max_value=10, 
+            value=5,
+            help="調整 UsageLog 寫入後的等待時間"
+        )
+        
+        if st.sidebar.button("🔧 應用延遲設置"):
+            st.session_state.api_delay_seconds = current_delay
+            st.sidebar.success(f"✅ 延遲設置為 {current_delay} 秒")
+        
+        # 顯示當前延遲設置
+        if hasattr(st.session_state, 'api_delay_seconds'):
+            st.sidebar.info(f"當前延遲：{st.session_state.api_delay_seconds} 秒")
+        else:
+            st.sidebar.info("當前延遲：5 秒（預設）")
+        
+        # 移除延遲測試
+        if st.sidebar.button("❌ 移除延遲測試"):
+            st.session_state.api_delay_seconds = 0
+            st.sidebar.success("✅ 延遲測試已移除")
+
 def main():
     """主函數"""
     try:
         app = RadiAIApp()
         app.run()
-        debug_feedback_in_app()
+        debug_feedback_in_app()  # 使用增強版調試工具
     except Exception as e:
-        # 最後的錯誤處理
         st.error("🚨 應用啟動失敗")
         st.exception(e)
         
