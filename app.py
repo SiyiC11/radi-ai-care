@@ -148,7 +148,26 @@ class RadiAIApp:
             translation_id = str(uuid.uuid4())
             text_hash = self.session_manager.generate_text_hash(report_text)
             
-            # 4. 處理進度顯示
+            # 4. 預先記錄使用次數（在翻譯開始前）
+            self.session_manager.record_translation_usage(translation_id, text_hash)
+            
+            # 5. 立即更新並顯示使用次數扣除
+            updated_stats = self.session_manager.get_usage_stats()
+            remaining_after_deduction = updated_stats['remaining']
+            
+            # 顯示扣除後的使用次數
+            if lang["code"] == "traditional_chinese":
+                deduction_msg = f"✅ 已開始翻譯！剩餘使用次數：{remaining_after_deduction}"
+            else:
+                deduction_msg = f"✅ 已开始翻译！剩余使用次数：{remaining_after_deduction}"
+            
+            st.success(deduction_msg)
+            
+            # 6. 重新渲染更新後的使用量追蹤器
+            st.markdown("### 📊 更新後使用狀況")
+            self.ui.render_usage_tracker_enhanced(lang, updated_stats)
+            
+            # 7. 處理進度顯示
             with st.container():
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -166,19 +185,16 @@ class RadiAIApp:
                         # 顯示結果
                         self.ui.render_translation_result(result["content"], lang)
                         
-                        # 記錄使用
-                        self.session_manager.record_translation_usage(translation_id, text_hash)
-                        
-                        # 記錄到 Google Sheets
+                        # 記錄到 Google Sheets（成功狀態）
                         processing_time = int((time.time() - start_time) * 1000)
                         self._log_usage(
                             report_text, file_type, "success", translation_id, 
                             validation_result, processing_time=processing_time
                         )
                         
-                        # 顯示完成狀態
-                        updated_stats = self.session_manager.get_usage_stats()
-                        self.ui.render_completion_status_enhanced(lang, updated_stats)
+                        # 顯示完成狀態（更新後的統計）
+                        final_stats = self.session_manager.get_usage_stats()
+                        self.ui.render_completion_status_enhanced(lang, final_stats)
                         
                         # 渲染回饋區塊
                         self.feedback_manager.render_feedback_section(
@@ -186,9 +202,19 @@ class RadiAIApp:
                         )
                         
                     else:
+                        # 翻譯失敗 - 恢復使用次數
+                        self._restore_usage_on_failure(translation_id)
                         st.error(f"❌ {result.get('error', '翻譯過程中發生錯誤')}")
                         
+                        # 記錄失敗到 Google Sheets
+                        self._log_usage(
+                            report_text, file_type, "error", translation_id, 
+                            validation_result, error=result.get('error', '未知錯誤')
+                        )
+                        
                 except Exception as e:
+                    # 翻譯異常 - 恢復使用次數
+                    self._restore_usage_on_failure(translation_id)
                     st.error(f"❌ 翻譯過程中發生錯誤: {str(e)}")
                     
                     self._log_usage(
@@ -203,6 +229,32 @@ class RadiAIApp:
         except Exception as e:
             st.error(f"❌ 處理翻譯請求時發生錯誤: {str(e)}")
             logger.exception("Translation handling error")
+    
+    def _restore_usage_on_failure(self, translation_id: str):
+        """翻譯失敗時恢復使用次數"""
+        try:
+            # 減少計數器
+            if st.session_state.translation_count > 0:
+                st.session_state.translation_count -= 1
+            
+            # 解除鎖定狀態
+            if st.session_state.translation_count < self.session_manager.daily_limit:
+                st.session_state.is_quota_locked = False
+            
+            # 從翻譯歷史中移除失敗的記錄
+            if 'translation_history' in st.session_state:
+                st.session_state.translation_history = [
+                    record for record in st.session_state.translation_history 
+                    if record.get('id') != translation_id
+                ]
+            
+            logger.info(f"已恢復使用次數，當前計數: {st.session_state.translation_count}")
+            
+            # 顯示恢復訊息
+            st.info("✅ 翻譯失敗，使用次數已恢復")
+            
+        except Exception as e:
+            logger.error(f"恢復使用次數失敗: {e}")
     
     def _log_usage(self, report_text: str, file_type: str, status: str, 
                    translation_id: str, validation_result: dict, 
@@ -254,84 +306,11 @@ class RadiAIApp:
             5. **聯繫技術支援**：發送錯誤資訊至 support@radiai.care
             """)
 
-def debug_feedback_in_app():
-    """在應用中添加調試工具"""
-    if st.sidebar.checkbox("🔧 顯示調試工具"):
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 回饋調試")
-        
-        if st.sidebar.button("🔍 診斷回饋功能"):
-            try:
-                from log_to_sheets import GoogleSheetsLogger
-                
-                logger = GoogleSheetsLogger()
-                if logger._initialize_client():
-                    if logger.feedback_worksheet:
-                        headers = logger.feedback_worksheet.row_values(1)
-                        st.sidebar.success(f"✅ Feedback工作表連接正常")
-                        st.sidebar.write(f"標題行: {len(headers)} 個欄位")
-                        st.sidebar.write(f"前5個標題: {headers[:5]}")
-                        
-                        # 檢查現有數據
-                        all_values = logger.feedback_worksheet.get_all_values()
-                        st.sidebar.info(f"📊 總行數: {len(all_values)}")
-                    else:
-                        st.sidebar.error("❌ Feedback工作表不存在")
-                else:
-                    st.sidebar.error("❌ 無法連接Google Sheets")
-            except Exception as e:
-                st.sidebar.error(f"❌ 錯誤: {e}")
-                st.sidebar.write(f"詳細錯誤: {str(e)}")
-        
-        if st.sidebar.button("🧪 測試回饋提交"):
-            try:
-                from log_to_sheets import log_feedback_to_sheets
-                import time
-                
-                test_data = {
-                    'translation_id': f'debug_test_{int(time.time())}',
-                    'language': '简体中文',
-                    'feedback_type': 'debug_test',
-                    'sentiment': 'positive',
-                    'clarity_score': 5,
-                    'usefulness_score': 5,
-                    'accuracy_score': 5,
-                    'recommendation_score': 10,
-                    'overall_satisfaction': 5.0,
-                    'issues': '調試測試',
-                    'suggestion': '調試建議',
-                    'email': 'debug@test.com',
-                    'report_length': 1000,
-                    'file_type': 'manual',
-                    'medical_terms_detected': 5,
-                    'confidence_score': 0.85,
-                    'app_version': 'v4.2-debug'
-                }
-                
-                # 顯示要提交的數據
-                st.sidebar.write("📤 提交數據:")
-                st.sidebar.json(test_data)
-                
-                # 嘗試提交
-                success = log_feedback_to_sheets(**test_data)
-                
-                if success:
-                    st.sidebar.success("✅ 測試提交成功！")
-                    st.sidebar.info(f"測試ID: {test_data['translation_id']}")
-                else:
-                    st.sidebar.error("❌ 測試提交失敗")
-                    
-            except Exception as e:
-                st.sidebar.error(f"❌ 測試失敗: {e}")
-
 def main():
     """主函數"""
     try:
         app = RadiAIApp()
         app.run()
-        
-        # 添加調試工具
-        debug_feedback_in_app()
         
     except Exception as e:
         # 最後的錯誤處理
