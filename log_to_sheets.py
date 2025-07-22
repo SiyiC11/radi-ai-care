@@ -1,136 +1,85 @@
-print("✅ FeedbackLogger loaded")
-import os
-import json
 import base64
-import uuid
-import datetime as dt
-import traceback
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+import json
+import logging
+import os
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 import gspread
 from google.oauth2.service_account import Credentials
 
+logger = logging.getLogger(__name__)
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/drive",
 ]
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-@dataclass
-class GoogleSheetsLogger:
-    sheet_id: str
-    worksheet_title: str = "Feedback"
-    verify_write: bool = False
-    creds_b64_env: str = "GOOGLE_SHEET_SECRET_B64"
+class FeedbackLogger:
+    WORKSHEET_TITLE = "Feedback"
+    HEADER = [
+        "Timestamp (UTC)",
+        "Translation ID",
+        "User ID",
+        "Language",
+        "File Type",
+        "Feedback Text",
+        "Device",
+        "Extra",
+    ]
 
-    client: Optional[gspread.Client] = field(default=None, init=False)
-    worksheet: Optional[gspread.Worksheet] = field(default=None, init=False)
-    initialized: bool = field(default=False, init=False)
-    last_error: Optional[str] = field(default=None, init=False)
+    def __init__(self, sheet_id: str):
+        self.sheet_id = sheet_id
+        self._client = None
+        self._ws = None
+        self._connect()
 
-    # ------------------------- Public API ------------------------- #
-    def init(self) -> bool:
-        """Initialize connection and worksheet (idempotent)."""
-        if self.initialized:
-            return True
+    def log_feedback(self, **kwargs: Any) -> bool:
+        return self.append(kwargs)
+
+    def append(self, row_data: Dict[str, Any]) -> bool:
+        if not self._ws:
+            logger.error("Worksheet not initialised")
+            return False
+        row = self._build_row(row_data)
         try:
-            creds_json = self._load_service_account()
-            creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
-            self.client = gspread.authorize(creds)
-            sheet = self.client.open_by_key(self.sheet_id)
-            try:
-                self.worksheet = sheet.worksheet(self.worksheet_title)
-            except gspread.WorksheetNotFound:
-                self.worksheet = sheet.add_worksheet(title=self.worksheet_title, rows="2000", cols="30")
-                self._write_headers()
-            self.initialized = True
+            self._ws.append_row(row, value_input_option="RAW")
             return True
         except Exception as e:
-            self.last_error = traceback.format_exc()
+            logger.exception("Failed to append row: %s", e)
             return False
 
-    def append_feedback(self, row: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
-        """Append one feedback row. Returns (ok, error_msg)."""
-        if not self.initialized and not self.init():
-            return False, self.last_error or "Failed to initialize GoogleSheetsLogger"
+    def _connect(self) -> None:
+        secret_b64 = os.getenv("GOOGLE_SHEET_CREDS_B64")
+        if not secret_b64:
+            raise RuntimeError("Missing env var: GOOGLE_SHEET_CREDS_B64")
 
+        creds_dict = json.loads(base64.b64decode(secret_b64))
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        self._client = gspread.authorize(creds)
+
+        sheet = self._client.open_by_key(self.sheet_id)
         try:
-            values = self._row_to_list(row)
-            self.worksheet.append_row(values, value_input_option="RAW")
+            self._ws = sheet.worksheet(self.WORKSHEET_TITLE)
+        except gspread.WorksheetNotFound:
+            self._ws = sheet.add_worksheet(title=self.WORKSHEET_TITLE, rows="1000", cols="10")
+        self._ensure_header()
 
-            if self.verify_write and row.get("translation_id"):
-                ok = self._verify_translation_id(row["translation_id"])
-                if not ok:
-                    return False, "Verification failed: translation_id not found after append"
-            return True, None
-        except Exception:
-            err = traceback.format_exc()
-            self.last_error = err
-            return False, err
+    def _ensure_header(self):
+        current = self._ws.row_values(1)
+        if current != self.HEADER:
+            self._ws.update("A1", [self.HEADER])
 
-    def diagnose(self) -> Dict[str, Any]:
-        """Return diagnostics for UI display."""
-        info = {
-            "initialized": self.initialized,
-            "worksheet_title": self.worksheet_title,
-            "sheet_id_present": bool(self.sheet_id),
-            "last_error": self.last_error,
-        }
-        if not self.initialized:
-            # Try init silently
-            _ = self.init()
-        if self.initialized:
-            try:
-                info.update({
-                    "spreadsheet_title": self.worksheet.spreadsheet.title,
-                    "worksheets": [ws.title for ws in self.worksheet.spreadsheet.worksheets()],
-                    "headers": self.worksheet.row_values(1)
-                })
-            except Exception:
-                info["ws_error"] = traceback.format_exc()
-        return info
-
-    # ------------------------- Internal Helpers ------------------------- #
-    def _load_service_account(self) -> Dict[str, Any]:
-        b64 = os.environ.get(self.creds_b64_env)
-        if not b64:
-            raise RuntimeError(f"Missing env var {self.creds_b64_env}")
-        return json.loads(base64.b64decode(b64))
-
-    def _write_headers(self):
-        headers = [
-            "timestamp_utc",
-            "uuid",
-            "translation_id",
-            "feedback_text",
-            "language",
-            "file_type",
-            "device_type",
-            "user_agent",
-            "extra",
-        ]
-        self.worksheet.update("A1", [headers])
-
-    def _row_to_list(self, row: Dict[str, Any]) -> List[Any]:
-        # Ensure fixed order as headers above
-        now = dt.datetime.utcnow().isoformat()
-        return [
-            row.get("timestamp_utc", now),
-            row.get("uuid", str(uuid.uuid4())),
-            row.get("translation_id", ""),
-            row.get("feedback_text", ""),
-            row.get("language", ""),
-            row.get("file_type", ""),
-            row.get("device_type", ""),
-            row.get("user_agent", ""),
-            json.dumps(row.get("extra", {}), ensure_ascii=False),
-        ]
-
-    def _verify_translation_id(self, tid: str) -> bool:
-        try:
-            cell = self.worksheet.find(tid)
-            return cell is not None
-        except Exception:
-            return False
+    def _build_row(self, data: Dict[str, Any]) -> List[Any]:
+        row = []
+        for col in self.HEADER:
+            key = col.lower().replace(" ", "_")
+            if col.lower().startswith("timestamp"):
+                row.append(_now_iso())
+            else:
+                row.append(data.get(col, data.get(key, "")))
+        return row
