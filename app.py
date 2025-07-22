@@ -366,7 +366,7 @@ def debug_feedback_in_app():
             try:
                 from log_to_sheets import test_feedback_logging_ultimate
                 
-                with st.sidebar.spinner("執行終極測試..."):
+                with st.spinner("執行終極測試..."):
                     results = test_feedback_logging_ultimate()
                 
                 success_count = sum(1 for r in results["results"] if r.get("success"))
