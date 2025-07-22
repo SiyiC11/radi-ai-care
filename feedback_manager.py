@@ -1,16 +1,8 @@
-print("✅ FeedbackManager loaded")
-from __future__ import annotations
 from typing import Optional
-
 import streamlit as st
 from log_to_sheets import FeedbackLogger
 
-
 class FeedbackManager:
-    """
-    Streamlit wrapper for rendering a feedback form and saving it via Google Sheets.
-    """
-
     def __init__(self, sheet_id: str):
         self._logger = FeedbackLogger(sheet_id)
 
@@ -24,11 +16,6 @@ class FeedbackManager:
         device: str = "",
         extra: str | dict = "",
     ) -> None:
-        """
-        Renders a feedback form and persists the result to Google Sheets.
-
-        After a successful submission, the form is disabled for that session.
-        """
         key_prefix = f"fb_{translation_id}"
         if st.session_state.get(f"{key_prefix}_done"):
             st.success("🙏 感謝您的回饋！")
@@ -42,7 +29,6 @@ class FeedbackManager:
         if not submitted:
             return
 
-        # 確保 extra 是 string
         if isinstance(extra, dict):
             import json
             extra = json.dumps(extra, ensure_ascii=False)
