@@ -4,7 +4,7 @@ RadiAI.Care - 修復版全域設定檔
 1. AppConfig  : 應用程式營運相關參數（添加缺失屬性）
 2. UIText     : 多語系介面文字（完整中英對照）
 3. CSS_STYLES : Streamlit 全局樣式
-4. 修復所有缺失的配置項目
+4. 添加隱私政策和使用條款內容
 """
 
 import streamlit as st
@@ -143,7 +143,7 @@ class UIText:
             "error_empty_input": "請輸入報告內容或上傳檔案",
             "error_file_too_large": "檔案過大，請上傳小於10MB的檔案",
             "error_unsupported_format": "不支援的檔案格式",
-            "error_content_too_short": "內容過短，請確保包含完整的醫學報告",
+            "error_content_too_short": "內容過短，請確保包含完整的醫學報告內容",
             "warning_no_medical": "內容中未發現明顯的醫學術語，請確認這是一份放射科報告",
             
             # 成功訊息
@@ -167,7 +167,27 @@ class UIText:
             # 底部資訊
             "footer_support": "技術支援",
             "footer_privacy": "隱私政策",
-            "footer_terms": "使用條款"
+            "footer_terms": "使用條款",
+            
+            # 隱私政策內容
+            "privacy_summary": "我們僅收集翻譯服務必要的資訊，符合澳洲隱私法規定。",
+            "privacy_details": [
+                "我們僅收集翻譯服務必要的資訊，包括您的報告內容和使用回饋。",
+                "所有數據採用加密傳輸和儲存，符合澳洲隱私法（Privacy Act 1988）規定。",
+                "我們不會與任何第三方分享您的個人醫療資訊。",
+                "您可隨時要求查看、更正或刪除您的個人資訊。",
+                "如有隱私相關疑問，請聯繫 privacy@radiai.care。"
+            ],
+            
+            # 使用條款內容
+            "terms_summary": "本服務僅提供醫學報告翻譯，不構成醫療建議。",
+            "terms_details": [
+                "本服務僅提供醫學報告翻譯和科普解釋，不構成任何醫療建議或診斷。",
+                "用戶須為所有醫療決策自負責任，並應諮詢專業醫師的意見。",
+                "我們保留隨時修改、暫停或終止服務的權利。",
+                "用戶承諾合法使用本服務，不得用於任何違法或不當目的。",
+                "本服務受澳洲法律管轄，如有爭議以澳洲法院管轄為準。"
+            ]
         },
         
         "简体中文": {
@@ -207,7 +227,7 @@ class UIText:
             "error_empty_input": "请输入报告内容或上传文件",
             "error_file_too_large": "文件过大，请上传小于10MB的文件",
             "error_unsupported_format": "不支持的文件格式",
-            "error_content_too_short": "内容过短，请确保包含完整的医学报告",
+            "error_content_too_short": "内容过短，请确保包含完整的医学报告内容",
             "warning_no_medical": "内容中未发现明显的医学术语，请确认这是一份放射科报告",
             
             # 成功信息
@@ -231,7 +251,27 @@ class UIText:
             # 底部信息
             "footer_support": "技术支持",
             "footer_privacy": "隐私政策", 
-            "footer_terms": "使用条款"
+            "footer_terms": "使用条款",
+            
+            # 隐私政策内容
+            "privacy_summary": "我们仅收集翻译服务必要的信息，符合澳洲隐私法规定。",
+            "privacy_details": [
+                "我们仅收集翻译服务必要的信息，包括您的报告内容和使用反馈。",
+                "所有数据采用加密传输和存储，符合澳洲隐私法（Privacy Act 1988）规定。",
+                "我们不会与任何第三方分享您的个人医疗信息。",
+                "您可随时要求查看、更正或删除您的个人信息。",
+                "如有隐私相关疑问，请联系 privacy@radiai.care。"
+            ],
+            
+            # 使用条款内容
+            "terms_summary": "本服务仅提供医学报告翻译，不构成医疗建议。",
+            "terms_details": [
+                "本服务仅提供医学报告翻译和科普解释，不构成任何医疗建议或诊断。",
+                "用户须为所有医疗决策自负责任，并应咨询专业医师的意见。",
+                "我们保留随时修改、暂停或终止服务的权利。",
+                "用户承诺合法使用本服务，不得用于任何违法或不当目的。",
+                "本服务受澳洲法律管辖，如有争议以澳洲法院管辖为准。"
+            ]
         }
     }
     
@@ -345,6 +385,20 @@ CSS_STYLES = """
     background:#ffffffea;border:1px solid #d8ecf4;border-radius:16px;
     padding:1.3rem;margin-top:1.2rem;box-shadow:0 4px 14px rgba(20,120,170,0.08);
     color:#1a1a1a !important;
+}
+
+/* ===== 隱私政策和使用條款樣式 ===== */
+.privacy-terms-summary{
+    font-size:0.85rem;color:#666 !important;text-align:center;
+    margin:1rem 0;padding:0.5rem;font-style:italic;
+}
+.privacy-terms-link{
+    color:#0d74b8 !important;text-decoration:underline;cursor:pointer;
+    font-weight:500;
+}
+.privacy-terms-content{
+    background:#f8f9fa;border-radius:8px;padding:1rem;margin-top:0.5rem;
+    border-left:3px solid #0d74b8;font-size:0.9rem;line-height:1.5;
 }
 
 /* ===== 進度條 ===== */
