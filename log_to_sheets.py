@@ -54,9 +54,9 @@ class FeedbackLogger:
             return False
 
     def _connect(self) -> None:
-        secret_b64 = os.getenv("GOOGLE_SHEET_CREDS_B64")
+        secret_b64 = os.getenv("GOOGLE_SHEET_SECRET_B64")
         if not secret_b64:
-            raise RuntimeError("Missing env var: GOOGLE_SHEET_CREDS_B64")
+            raise RuntimeError("Missing env var: GOOGLE_SHEET_SECRET_B64")
 
         creds_dict = json.loads(base64.b64decode(secret_b64))
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
