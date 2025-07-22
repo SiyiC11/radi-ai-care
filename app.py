@@ -305,7 +305,75 @@ class RadiAIApp:
             4. **檢查網路連線**：確保網路連線穩定
             5. **聯繫技術支援**：發送錯誤資訊至 support@radiai.care
             """)
-
+def debug_feedback_in_app():
+    """在應用中添加調試工具"""
+    if st.sidebar.checkbox("🔧 顯示調試工具"):
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 回饋調試")
+        
+        if st.sidebar.button("🔍 診斷回饋功能"):
+            try:
+                from log_to_sheets import GoogleSheetsLogger
+                
+                logger = GoogleSheetsLogger()
+                if logger._initialize_client():
+                    if logger.feedback_worksheet:
+                        headers = logger.feedback_worksheet.row_values(1)
+                        st.sidebar.success(f"✅ Feedback工作表連接正常")
+                        st.sidebar.write(f"標題行: {len(headers)} 個欄位")
+                        st.sidebar.write(f"前5個標題: {headers[:5]}")
+                        
+                        # 檢查現有數據
+                        all_values = logger.feedback_worksheet.get_all_values()
+                        st.sidebar.info(f"📊 總行數: {len(all_values)}")
+                    else:
+                        st.sidebar.error("❌ Feedback工作表不存在")
+                else:
+                    st.sidebar.error("❌ 無法連接Google Sheets")
+            except Exception as e:
+                st.sidebar.error(f"❌ 錯誤: {e}")
+                st.sidebar.write(f"詳細錯誤: {str(e)}")
+        
+        if st.sidebar.button("🧪 測試回饋提交"):
+            try:
+                from log_to_sheets import log_feedback_to_sheets
+                import time
+                
+                test_data = {
+                    'translation_id': f'debug_test_{int(time.time())}',
+                    'language': '简体中文',
+                    'feedback_type': 'debug_test',
+                    'sentiment': 'positive',
+                    'clarity_score': 5,
+                    'usefulness_score': 5,
+                    'accuracy_score': 5,
+                    'recommendation_score': 10,
+                    'overall_satisfaction': 5.0,
+                    'issues': '調試測試',
+                    'suggestion': '調試建議',
+                    'email': 'debug@test.com',
+                    'report_length': 1000,
+                    'file_type': 'manual',
+                    'medical_terms_detected': 5,
+                    'confidence_score': 0.85,
+                    'app_version': 'v4.2-debug'
+                }
+                
+                # 顯示要提交的數據
+                st.sidebar.write("📤 提交數據:")
+                st.sidebar.json(test_data)
+                
+                # 嘗試提交
+                success = log_feedback_to_sheets(**test_data)
+                
+                if success:
+                    st.sidebar.success("✅ 測試提交成功！")
+                    st.sidebar.info(f"測試ID: {test_data['translation_id']}")
+                else:
+                    st.sidebar.error("❌ 測試提交失敗")
+                    
+            except Exception as e:
+                st.sidebar.error(f"❌ 測試失敗: {e}")
 def main():
     """主函數"""
     try:
