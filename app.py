@@ -414,7 +414,38 @@ class RadiAIApp:
             return all(os.getenv(var) for var in required_vars)
         except:
             return False
+    def debug_feedback_in_app():
+    """在應用中添加調試工具"""
+    if st.sidebar.checkbox("🔧 顯示調試工具"):
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 回饋調試")
+        
+        if st.sidebar.button("🔍 診斷回饋功能"):
+            # 這裡會顯示診斷結果
+            from log_to_sheets import GoogleSheetsLogger
+            
+            try:
+                logger = GoogleSheetsLogger()
+                if logger._initialize_client():
+                    if logger.feedback_worksheet:
+                        headers = logger.feedback_worksheet.row_values(1)
+                        st.sidebar.success(f"✅ Feedback工作表連接正常")
+                        st.sidebar.write(f"標題行: {len(headers)} 個欄位")
+                    else:
+                        st.sidebar.error("❌ Feedback工作表不存在")
+                else:
+                    st.sidebar.error("❌ 無法連接Google Sheets")
+            except Exception as e:
+                st.sidebar.error(f"❌ 錯誤: {e}")
 
+# 在 main() 函數中調用
+def main():
+    try:
+        app = RadiAIApp()
+        app.run()
+        debug_feedback_in_app()  # 添加這行
+    except Exception as e:
+        # ... 現有的錯誤處理
 def main():
     """主函數"""
     try:
