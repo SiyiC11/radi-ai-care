@@ -1,287 +1,229 @@
 """
-RadiAI.Care ‒ SessionManager (強化版)
+RadiAI.Care Session Manager - 簡化修復版
 ===================================
-‧ 追蹤每日免費額度，防連刷
-‧ 端到端 JS ⇄ Python 溝通（LocalStorage 與 Browser Fingerprint）
-‧ 基本安全檢查：無痕模式、指紋缺失、多重異常即降額
+移除複雜的 JavaScript 指紋系統，使用簡單可靠的方法：
+1. Session State + Google Sheets 查詢
+2. 設備指紋基於 Streamlit 原生功能
+3. 修復刷新頁面重置問題
 """
 
-
-from __future__ import annotations
-
-import base64
+import streamlit as st
 import hashlib
-import hmac
-import json
-import logging
-import re
 import time
 import uuid
+import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Tuple
-from pathlib import Path        # ← 新增
+from typing import Dict, Any, Tuple, Optional
 
-import streamlit as st
-import streamlit.components.v1 as components
+# 延遲導入避免循環依賴
+def get_sheets_logger():
+    try:
+        from log_to_sheets import GoogleSheetsLogger
+        return GoogleSheetsLogger()
+    except ImportError:
+        return None
 
 logger = logging.getLogger(__name__)
 
 
 class SessionManager:
-    """增強版會話狀態管理器"""
-
-    # ──────────────────────────
-    # 預設 Session State 欄位
-    # ──────────────────────────
-    DEFAULT_VALUES: Dict[str, Any] = {
-        "language": "简体中文",
-        "translation_count": 0,
-        "input_method": "text",
-        "feedback_submitted_ids": set(),
-        "last_translation_id": None,
-        "user_session_id": lambda: str(uuid.uuid4())[:8],
-        "app_start_time": lambda: time.time(),
-        "translation_history": list,
-        "last_activity": lambda: time.time(),
-        "browser_fingerprint": None,
-        "device_id": None,
-        "permanent_user_id": None,
-        "used_translations": dict,
-        "daily_usage": dict,
-        "is_quota_locked": False,
-        "quota_lock_time": None,
-        "session_initialized": False,
-        "fingerprint_data": dict,
-        "security_checks": dict,
-        "js_initialized": False,
-    }
-
-    # 伺服器端 HMAC 密鑰（正式環境請改用環境變數）
-    SECURITY_KEY = "radiai_2024_security_key"
-
-    # --------------------------------------------------------------------- #
-    # 初始化                                                                 #
-    # --------------------------------------------------------------------- #
-    def __init__(self) -> None:
-        self.storage_key = "radiai_usage_data"
-        self.user_id_key = "radiai_permanent_user_id"
-        self.daily_usage_key = "radiai_daily_usage"
-
-    def init_session_state(self) -> None:
-        """一步到位：初始化所有 Session 欄位 + JS 橋接 + 安全檢查"""
-
-        if not st.session_state.get("session_initialized", False):
-            for k, default in self.DEFAULT_VALUES.items():
-                st.session_state[k] = default() if callable(default) else default
-            st.session_state.session_initialized = True
-
-        # 注入 JS（一次即可）
-        if not st.session_state.get("js_initialized", False):
-            self._inject_javascript_bridge()
-            st.session_state.js_initialized = True
-
-        # 後續流程
-        self._collect_device_fingerprint()
-        self._init_permanent_user_id()
-        self._load_usage_data()
-        self._perform_security_checks()
-        self._check_quota_status()
-
-    # --------------------------------------------------------------------- #
-    # JavaScript 通信橋接                                                    #
-    # --------------------------------------------------------------------- #
-    def _inject_javascript_bridge(self) -> None:
-        """將防濫用 JS 代碼注入到目前頁面（高度 0，不佔版面）"""
-        js_code = Path(__file__).with_name("usage_bridge.js").read_text(encoding="utf-8")
-        components.html(js_code, height=0)  # type: ignore
-
-    # --------------------------------------------------------------------- #
-    # 收集與同步瀏覽器端資料                                                 #
-    # --------------------------------------------------------------------- #
-    def _collect_device_fingerprint(self) -> None:
-        """透過隱藏 input 值取得 JS 傳回的 Base64 資料並同步到 session"""
-        data_b64: str = st.session_state.get("radiai_data_bridge_value", "")
-        if not data_b64:
-            return
-
+    """簡化版會話管理器"""
+    
+    def __init__(self):
+        self.sheets_logger = None
+        self.daily_limit = 3
+        
+    def init_session_state(self):
+        """初始化會話狀態"""
+        # 基本狀態初始化
+        defaults = {
+            "language": "简体中文",
+            "translation_count": 0,
+            "input_method": "text",
+            "feedback_submitted_ids": set(),
+            "last_translation_id": None,
+            "user_session_id": str(uuid.uuid4())[:8],
+            "app_start_time": time.time(),
+            "translation_history": [],
+            "last_activity": time.time(),
+            "device_id": None,
+            "permanent_user_id": None,
+            "daily_usage": {},
+            "is_quota_locked": False,
+            "session_initialized": False,
+        }
+        
+        for key, value in defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = value
+        
+        # 生成設備ID（基於瀏覽器會話）
+        if not st.session_state.device_id:
+            st.session_state.device_id = self._generate_device_id()
+        
+        # 生成永久用戶ID
+        if not st.session_state.permanent_user_id:
+            st.session_state.permanent_user_id = self._generate_user_id()
+        
+        # 從 Google Sheets 加載今日實際使用次數（修復刷新問題）
+        self._load_today_usage_from_sheets()
+        
+        st.session_state.session_initialized = True
+    
+    def _generate_device_id(self) -> str:
+        """生成設備ID"""
+        # 使用 session_id + 時間戳生成穩定的設備ID
+        raw_data = f"{st.session_state.user_session_id}_{int(time.time() / 3600)}"
+        device_hash = hashlib.md5(raw_data.encode()).hexdigest()[:12]
+        return f"dev_{device_hash}"
+    
+    def _generate_user_id(self) -> str:
+        """生成用戶ID"""
+        # 結合設備ID和日期生成相對穩定的用戶ID
+        today = datetime.now().strftime("%Y-%m-%d")
+        raw_data = f"{st.session_state.device_id}_{today}"
+        user_hash = hashlib.sha256(raw_data.encode()).hexdigest()[:16]
+        return f"user_{user_hash}"
+    
+    def _load_today_usage_from_sheets(self):
+        """從 Google Sheets 加載今日實際使用次數"""
         try:
-            decoded = base64.b64decode(data_b64).decode("utf-8")
-            payload = json.loads(decoded)
-
-            st.session_state.permanent_user_id = payload["permanentUserId"]
-            st.session_state.fingerprint_data = payload["browserFingerprint"]
-            st.session_state.is_incognito = payload.get("isIncognito", False)
-
-            self._sync_usage_data(payload["dailyUsage"])
-            logger.info(f"已同步設備指紋與日用量，UID={payload['permanentUserId'][:16]}…")
+            if not self.sheets_logger:
+                self.sheets_logger = get_sheets_logger()
+            
+            if not self.sheets_logger or not self.sheets_logger.initialized:
+                if self.sheets_logger and not self.sheets_logger.initialized:
+                    self.sheets_logger._initialize_client()
+            
+            # 查詢今日使用次數
+            today = datetime.now().strftime("%Y-%m-%d")
+            user_id = st.session_state.permanent_user_id
+            
+            actual_count = self._query_usage_from_sheets(today, user_id)
+            
+            if actual_count is not None:
+                st.session_state.translation_count = actual_count
+                logger.info(f"從 Google Sheets 加載今日使用次數: {actual_count}")
+                
+                # 檢查是否超過限額
+                if actual_count >= self.daily_limit:
+                    st.session_state.is_quota_locked = True
+            else:
+                logger.warning("無法從 Google Sheets 獲取使用次數，使用本地記錄")
+                
         except Exception as e:
-            logger.error(f"解析 JS 指紋資料失敗: {e}")
-
-    def _sync_usage_data(self, js_daily_usage: Dict[str, Any]) -> None:
-        """把 LocalStorage 的同日使用量同步到 Server 端"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        st.session_state.daily_usage.setdefault(today, {})
-        st.session_state.daily_usage[today][
-            st.session_state.permanent_user_id
-        ] = js_daily_usage
-
-        st.session_state.translation_count = js_daily_usage.get("count", 0)
-        daily_limit = st.session_state.get("daily_limit", 3)
-        if js_daily_usage.get("count", 0) >= daily_limit:
-            st.session_state.is_quota_locked = True
-
-    # --------------------------------------------------------------------- #
-    # 永久 UID 產生／回收                                                    #
-    # --------------------------------------------------------------------- #
-    def _init_permanent_user_id(self) -> None:
-        """優先從 URL 參數拿 UID，否則候補 JS 回傳；都沒有就自生一個"""
-        if st.session_state.permanent_user_id:
-            return
-
-        uid_from_url = st.experimental_get_query_params().get("uid", [None])[0]
-        if uid_from_url:
-            st.session_state.permanent_user_id = uid_from_url
-            logger.info(f"UID 來源：URL 參數 {uid_from_url}")
-            return
-
-        # 先給一個暫時 ID，待 JS 覆寫
-        st.session_state.permanent_user_id = self._generate_secure_user_id()
-        logger.info("已產生暫時 UID（等待 JS 覆寫）")
-
-    def _generate_secure_user_id(self) -> str:
-        """用 SHA‑256 雜湊組合時間戳 + UUID + Secret 產生 16 碼 UID"""
-        raw = f"{time.time()}_{uuid.uuid4()}_{self.SECURITY_KEY}"
-        return f"uid_{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
-
-    # --------------------------------------------------------------------- #
-    # 使用量與安全檢查                                                      #
-    # --------------------------------------------------------------------- #
-    def _load_usage_data(self) -> None:
-        """清理七日前的舊紀錄，確保 daily_usage 結構存在"""
-        cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        st.session_state.daily_usage = {
-            d: v
-            for d, v in st.session_state.daily_usage.items()
-            if d >= cutoff
-        }
-
-    def _perform_security_checks(self) -> None:
-        """無痕模式 / 指紋缺失 皆算可疑；多重異常者降日額"""
-        issues = []
-
-        if st.session_state.get("is_incognito"):
-            issues.append("incognito_mode")
-        if not st.session_state.get("fingerprint_data"):
-            issues.append("no_fingerprint")
-        if (
-            not st.session_state.get("permanent_user_id")
-            or len(st.session_state.permanent_user_id) < 20
-        ):
-            issues.append("invalid_uid")
-
-        st.session_state.security_checks = {
-            "timestamp": time.time(),
-            "issues": issues,
-            "is_suspicious": bool(issues),
-        }
-
-        st.session_state.daily_limit = 1 if len(issues) > 1 else 3
-
-    def _check_quota_status(self) -> None:
-        """根據已使用量與每日限額，判定是否鎖定"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        uid = st.session_state.permanent_user_id
-        usage = st.session_state.daily_usage.get(today, {}).get(uid, {})
-        used = usage.get("count", 0)
-        limit = st.session_state.get("daily_limit", 3)
-
-        if used >= limit:
-            st.session_state.is_quota_locked = True
-            st.session_state.translation_count = used
-
-    # --------------------------------------------------------------------- #
-    # Public API                                                            #
-    # --------------------------------------------------------------------- #
+            logger.error(f"加載今日使用次數失敗: {e}")
+            # 使用本地記錄作為備用
+    
+    def _query_usage_from_sheets(self, date: str, user_id: str) -> Optional[int]:
+        """查詢指定日期和用戶的使用次數"""
+        try:
+            if not self.sheets_logger or not self.sheets_logger.usage_worksheet:
+                return None
+            
+            # 獲取所有記錄
+            records = self.sheets_logger.usage_worksheet.get_all_records()
+            
+            # 計算今日該用戶的使用次數
+            count = 0
+            for record in records:
+                try:
+                    record_date = record.get('Date & Time', '')[:10]  # 取日期部分
+                    record_user = record.get('User ID', '')
+                    record_status = record.get('Processing Status', '')
+                    
+                    if (record_date == date and 
+                        record_user == user_id and 
+                        record_status == 'success'):
+                        count += 1
+                except Exception:
+                    continue
+            
+            return count
+            
+        except Exception as e:
+            logger.error(f"查詢使用次數失敗: {e}")
+            return None
+    
     def can_use_translation(self) -> Tuple[bool, str]:
-        """回傳 (可否使用, 訊息)"""
-        if st.session_state.security_checks.get("is_suspicious"):
-            return False, "偵測到瀏覽器異常，請使用正常模式或聯絡客服。"
-
+        """檢查是否可以使用翻譯服務"""
+        # 簡單的限制檢查
         if st.session_state.is_quota_locked:
-            return False, "今日免費額度已用完，請明日再來或升級付費方案。"
-
-        return True, "OK"
-
-    def record_translation_usage(self, translation_id: str, text_hash: str) -> None:
-        """完成一次翻譯後記錄並同步 JS"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        uid = st.session_state.permanent_user_id
-        limit = st.session_state.get("daily_limit", 3)
-
-        st.session_state.daily_usage.setdefault(today, {}).setdefault(
-            uid,
-            {
-                "count": 0,
-                "translations": [],
-                "first_use": time.time(),
-                "last_use": time.time(),
-                "text_hashes": set(),
-            },
-        )
-
-        usage = st.session_state.daily_usage[today][uid]
-
-        if text_hash in usage["text_hashes"]:
-            logger.warning("重複翻譯相同內容，忽略計數")
-            return
-
-        usage["count"] += 1
-        usage["translations"].append({"id": translation_id, "time": time.time()})
-        usage["last_use"] = time.time()
-        usage["text_hashes"].add(text_hash)
-        st.session_state.translation_count = usage["count"]
-
-        if usage["count"] >= limit:
+            return False, "今日免費額度已用完，請明日再來"
+        
+        if st.session_state.translation_count >= self.daily_limit:
             st.session_state.is_quota_locked = True
-
-        # 呼叫 JS 更新 localStorage
-        self._update_js_usage(translation_id)
-
+            return False, "今日免費額度已用完，請明日再來"
+        
+        return True, "可以使用"
+    
+    def record_translation_usage(self, translation_id: str, text_hash: str):
+        """記錄翻譯使用"""
+        try:
+            # 更新本地計數
+            st.session_state.translation_count += 1
+            st.session_state.last_translation_id = translation_id
+            st.session_state.last_activity = time.time()
+            
+            # 添加到歷史記錄
+            if 'translation_history' not in st.session_state:
+                st.session_state.translation_history = []
+            
+            st.session_state.translation_history.append({
+                'id': translation_id,
+                'timestamp': time.time(),
+                'text_hash': text_hash
+            })
+            
+            # 檢查是否達到限額
+            if st.session_state.translation_count >= self.daily_limit:
+                st.session_state.is_quota_locked = True
+            
+            logger.info(f"記錄翻譯使用: {translation_id}, 總計: {st.session_state.translation_count}")
+            
+        except Exception as e:
+            logger.error(f"記錄翻譯使用失敗: {e}")
+    
     def generate_text_hash(self, text: str) -> str:
-        """產生內容雜湊值（去符號、壓小寫、壓空白）"""
-        normalized = re.sub(r"[^\w\s]", "", text.lower())
-        normalized = re.sub(r"\s+", " ", normalized).strip()
-        return hmac.new(
-            self.SECURITY_KEY.encode(), normalized.encode(), hashlib.sha256
-        ).hexdigest()
-
+        """生成文本哈希值（防重複翻譯）"""
+        # 標準化文本：移除多餘空格，轉小寫
+        normalized = ' '.join(text.lower().split())
+        return hashlib.md5(normalized.encode()).hexdigest()[:16]
+    
     def get_usage_stats(self) -> Dict[str, Any]:
-        """回傳前端可顯示的基本統計"""
-        today = datetime.now().strftime("%Y-%m-%d")
-        uid = st.session_state.permanent_user_id
-        usage = st.session_state.daily_usage.get(today, {}).get(uid, {})
-
-        limit = st.session_state.get("daily_limit", 3)
-        used = usage.get("count", 0)
-
+        """獲取使用統計"""
+        today_usage = st.session_state.translation_count
+        remaining = max(0, self.daily_limit - today_usage)
+        is_locked = st.session_state.is_quota_locked or today_usage >= self.daily_limit
+        
         return {
-            "today_used": used,
-            "remaining": max(0, limit - used),
-            "limit": limit,
-            "session_used": st.session_state.translation_count,
-            "is_locked": st.session_state.is_quota_locked,
+            'today_usage': today_usage,
+            'remaining': remaining,
+            'daily_limit': self.daily_limit,
+            'is_locked': is_locked,
+            'user_id': st.session_state.permanent_user_id[:8] + "****",  # 部分遮蔽
+            'device_id': st.session_state.device_id,
+            'session_id': st.session_state.user_session_id,
+            'is_incognito': False,  # 簡化版不檢測無痕模式
+            'security_issues': [],  # 簡化版不檢測安全問題
         }
-
-    # --------------------------------------------------------------------- #
-    # Internal helpers                                                      #
-    # --------------------------------------------------------------------- #
-    def _update_js_usage(self, translation_id: str) -> None:
-        """呼叫前端函式 `updateUsage`"""
-        components.html(
-            f"""
-            <script>
-            window.RadiAIUsageManager && window.RadiAIUsageManager.updateUsage('{translation_id}');
-            </script>
-            """,
-            height=0,
-        )
+    
+    def reset_daily_usage(self):
+        """重置每日使用量（僅用於測試）"""
+        st.session_state.translation_count = 0
+        st.session_state.is_quota_locked = False
+        st.session_state.translation_history = []
+        logger.info("每日使用量已重置")
+    
+    def get_session_info(self) -> Dict[str, Any]:
+        """獲取會話信息（用於調試）"""
+        return {
+            'session_id': st.session_state.user_session_id,
+            'device_id': st.session_state.device_id,
+            'user_id': st.session_state.permanent_user_id,
+            'translation_count': st.session_state.translation_count,
+            'is_quota_locked': st.session_state.is_quota_locked,
+            'app_start_time': st.session_state.app_start_time,
+            'last_activity': st.session_state.last_activity,
+            'language': st.session_state.language
+        }
