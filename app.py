@@ -446,63 +446,63 @@ class RadiAIApp:
             debug_feedback_in_app()  # 添加這行
         except Exception as e:
             # ... 現有的錯誤處理
-def main():
-    """主函數"""
-    try:
-        app = RadiAIApp()
-        app.run()
-    except Exception as e:
-        # 最後的錯誤處理
-        st.error("🚨 應用啟動失敗")
-        st.exception(e)
-        
-        st.markdown("""
-        ### 🆘 緊急恢復步驟：
-        
-        1. **檢查文件結構**：確保所有必要文件都存在
-        2. **檢查環境變量**：確保 OPENAI_API_KEY 和 GOOGLE_SHEET_SECRET_B64 已設置
-        3. **檢查依賴包**：運行 `pip install -r requirements.txt`
-        4. **檢查新增模塊**：
-           - `utils/security.py` - 安全管理模塊
-           - `utils/exceptions.py` - 異常處理模塊
-        5. **聯繫支援**：發送錯誤信息至 support@radiai.care
-        
-        ### 🔍 快速診斷：
-        """)
-        
-        # 簡單的文件結構檢查
-        import os
-        from pathlib import Path
-        
-        required_files = [
-            "config/settings.py",
-            "utils/translator.py", 
-            "utils/file_handler.py",
-            "utils/session_manager.py",
-            "utils/feedback_manager.py",
-            "utils/security.py",  # 新增
-            "utils/exceptions.py",  # 新增
-            "components/ui_components.py",
-            "log_to_sheets.py"
-        ]
-        
-        for file_path in required_files:
-            if Path(file_path).exists():
-                st.success(f"✅ {file_path}")
-            else:
-                st.error(f"❌ {file_path} - 文件缺失")
-        
-        # Logo 文件檢查
-        logo_paths = ["assets/llogo", "assets/llogo.png", "llogo", "llogo.png"]
-        logo_found = False
-        for logo_path in logo_paths:
-            if Path(logo_path).exists():
-                st.success(f"✅ Logo: {logo_path}")
-                logo_found = True
-                break
-        
-        if not logo_found:
-            st.warning("⚠️ Logo 文件未找到，將使用默認圖標")
+    def main():
+        """主函數"""
+        try:
+            app = RadiAIApp()
+            app.run()
+        except Exception as e:
+            # 最後的錯誤處理
+            st.error("🚨 應用啟動失敗")
+            st.exception(e)
+            
+            st.markdown("""
+            ### 🆘 緊急恢復步驟：
+            
+            1. **檢查文件結構**：確保所有必要文件都存在
+            2. **檢查環境變量**：確保 OPENAI_API_KEY 和 GOOGLE_SHEET_SECRET_B64 已設置
+            3. **檢查依賴包**：運行 `pip install -r requirements.txt`
+            4. **檢查新增模塊**：
+               - `utils/security.py` - 安全管理模塊
+               - `utils/exceptions.py` - 異常處理模塊
+            5. **聯繫支援**：發送錯誤信息至 support@radiai.care
+            
+            ### 🔍 快速診斷：
+            """)
+            
+            # 簡單的文件結構檢查
+            import os
+            from pathlib import Path
+            
+            required_files = [
+                "config/settings.py",
+                "utils/translator.py", 
+                "utils/file_handler.py",
+                "utils/session_manager.py",
+                "utils/feedback_manager.py",
+                "utils/security.py",  # 新增
+                "utils/exceptions.py",  # 新增
+                "components/ui_components.py",
+                "log_to_sheets.py"
+            ]
+            
+            for file_path in required_files:
+                if Path(file_path).exists():
+                    st.success(f"✅ {file_path}")
+                else:
+                    st.error(f"❌ {file_path} - 文件缺失")
+            
+            # Logo 文件檢查
+            logo_paths = ["assets/llogo", "assets/llogo.png", "llogo", "llogo.png"]
+            logo_found = False
+            for logo_path in logo_paths:
+                if Path(logo_path).exists():
+                    st.success(f"✅ Logo: {logo_path}")
+                    logo_found = True
+                    break
+            
+            if not logo_found:
+                st.warning("⚠️ Logo 文件未找到，將使用默認圖標")
 
 if __name__ == "__main__":
     main()
