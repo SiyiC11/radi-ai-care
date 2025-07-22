@@ -445,7 +445,7 @@ class RadiAIApp:
             app.run()
             debug_feedback_in_app()  # 添加這行
         except Exception as e:
-            # ... 現有的錯誤處理
+            
 def main():
     """主函數"""
     try:
