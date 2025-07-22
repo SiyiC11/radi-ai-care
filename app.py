@@ -191,7 +191,8 @@ class RadiAIApp:
                             report_text, file_type, "success", translation_id, 
                             validation_result, processing_time=processing_time
                         )
-                        
+                        time.sleep(7)  # 等待 7 秒
+                        print("延遲測試：UsageLog 寫入後等待 5 秒")
                         # 顯示完成狀態（更新後的統計）
                         final_stats = self.session_manager.get_usage_stats()
                         self.ui.render_completion_status_enhanced(lang, final_stats)
