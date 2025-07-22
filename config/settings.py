@@ -1,69 +1,260 @@
 """
-RadiAI.Care ── 全域設定檔
+RadiAI.Care - 修復版全域設定檔
 ======================================================
-1. AppConfig  : 應用程式營運相關參數
-2. UIText     : 多語系介面文字
-3. CSS_STYLES : Streamlit 全局樣式（已修正手機白字問題）
-4. inject_css : 在 Streamlit 中注入 CSS 的輔助函式
+1. AppConfig  : 應用程式營運相關參數（添加缺失屬性）
+2. UIText     : 多語系介面文字（完整中英對照）
+3. CSS_STYLES : Streamlit 全局樣式
+4. 修復所有缺失的配置項目
 """
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from pathlib import Path
 import streamlit as st
+import base64
+from pathlib import Path
+from typing import Tuple, Dict, Any
 
 
-# ────────────────────────────────────────────────────
-# 1. 應用程式設定
-# ────────────────────────────────────────────────────
-@dataclass(slots=True, frozen=True)
 class AppConfig:
-    """核心參數：如需修改請集中於此。"""
-    # 免費用戶每日可執行翻譯次數
-    max_free_usage: int = 3
-    # Google Sheet 金鑰（填入自己表單的 ID）
-    google_sheet_id: str = "1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-    # 工作表名稱
-    usage_log_sheet: str = "usagelog"
-    feedback_sheet: str = "feedback"
-    SUPPORTED_FILE_TYPES: Tuple[str, ...] = ("pdf", "txt", "docx", "doc")
-    FILE_SIZE_LIMIT_MB: int = 10            # 依需求調整 (單位：MB)
-    MEDICAL_KEYWORDS: Tuple[str, ...] = (
-        # 可再自行擴充
-        "ct", "mri", "x‑ray", "ultrasound", "lesion", "mass",
-        "nodule", "abdomen", "brain", "spine", "lung", "heart"
+    """應用程式配置（修復版）"""
+    
+    # 基本應用信息
+    APP_TITLE = "RadiAI.Care"
+    APP_SUBTITLE = "智能醫療報告翻譯助手"
+    APP_DESCRIPTION = "為澳洲華人社群提供專業醫學報告翻譯與科普解釋服務"
+    APP_VERSION = "4.2.0"
+    APP_ICON = "🏥"
+    
+    # 使用限制
+    MAX_FREE_TRANSLATIONS = 3
+    MIN_TEXT_LENGTH = 50
+    MAX_TEXT_LENGTH = 15000
+    FILE_SIZE_LIMIT_MB = 10
+    
+    # 支援的文件格式
+    SUPPORTED_FILE_TYPES = ("pdf", "txt", "docx", "doc")
+    
+    # 醫學關鍵詞
+    MEDICAL_KEYWORDS = (
+        "ct", "mri", "x-ray", "xray", "ultrasound", "scan", "examination",
+        "lesion", "mass", "nodule", "opacity", "density", "abnormal", "normal",
+        "brain", "chest", "abdomen", "spine", "lung", "heart", "liver", "kidney",
+        "thorax", "pelvis", "impression", "findings", "technique", "conclusion",
+        "radiologist", "contrast", "enhancement", "fracture", "inflammation"
     )
-    MIN_TEXT_LENGTH: int = 80        # 少於此視為過短
-    MAX_TEXT_LENGTH: int = 15000     # 超過此視為過長
+    
+    # OpenAI 設定
+    OPENAI_MODEL = "gpt-4o-mini"
+    OPENAI_TEMPERATURE = 0.2
+    OPENAI_MAX_TOKENS = 2048
+    OPENAI_TIMEOUT = 60
+    
+    # Google Sheets 設定
+    GOOGLE_SHEET_ID = "1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4"
+    USAGE_LOG_SHEET = "UsageLog"
+    FEEDBACK_SHEET = "Feedback"
+    
+    # Logo 快取
+    _logo_cache = None
+    
+    def get_logo_base64(self) -> Tuple[str, str]:
+        """獲取 Logo 的 Base64 編碼"""
+        if self._logo_cache:
+            return self._logo_cache
+        
+        # 嘗試多個可能的 Logo 路徑
+        possible_paths = [
+            "assets/llogo.png",
+            "assets/llogo",
+            "llogo.png", 
+            "llogo",
+            "static/logo.png"
+        ]
+        
+        for logo_path in possible_paths:
+            path = Path(logo_path)
+            if path.exists():
+                try:
+                    with open(path, "rb") as f:
+                        logo_data = base64.b64encode(f.read()).decode()
+                    
+                    # 根據副檔名確定 MIME 類型
+                    if path.suffix.lower() in ['.png']:
+                        mime_type = "image/png"
+                    elif path.suffix.lower() in ['.jpg', '.jpeg']:
+                        mime_type = "image/jpeg"
+                    else:
+                        mime_type = "image/png"  # 預設
+                    
+                    self._logo_cache = (logo_data, mime_type)
+                    return self._logo_cache
+                except Exception:
+                    continue
+        
+        # 如果找不到 Logo，使用預設圖示
+        # 建立一個簡單的 SVG logo
+        default_svg = """
+        <svg width="60" height="60" xmlns="http://www.w3.org/2000/svg">
+            <rect width="60" height="60" rx="12" fill="#0d74b8"/>
+            <text x="30" y="40" font-family="Arial" font-size="24" fill="white" text-anchor="middle">🏥</text>
+        </svg>
+        """
+        logo_data = base64.b64encode(default_svg.encode()).decode()
+        self._logo_cache = (logo_data, "image/svg+xml")
+        return self._logo_cache
 
-    OPENAI_MODEL: str = "gpt-4o-mini"   # 改成你有權限的模型
-    OPENAI_TEMPERATURE: float = 0.2
-    OPENAI_MAX_TOKENS: int = 2048
-    OPENAI_TIMEOUT: int = 60            # 秒
-    APP_VERSION: str = "v0.4.0"   # 隨時可改，語意化版本號或 Git commit 短 SHA
-# ────────────────────────────────────────────────────
-# 2. 多語系介面文字
-# ────────────────────────────────────────────────────
-UIText: dict[str, dict[str, str]] = {
-    "coming_soon": {
-        "zh_tw": "功能即將上線，敬請期待…",
-        "zh_cn": "功能即将上线，敬请期待…",
-        "en": "Coming soon…",
-    },
-    "error_generic": {
-        "zh_tw": "系統發生錯誤，請稍後再試",
-        "zh_cn": "系统发生错误，请稍后再试",
-        "en": "An error occurred, please try again later",
-    },
-    # 其他介面字串可依需求再擴充
+
+class UIText:
+    """多語系文字配置（修復版）"""
+    
+    LANGUAGE_CONFIG = {
+        "繁體中文": {
+            "code": "traditional_chinese",
+            "app_title": "RadiAI.Care",
+            "app_subtitle": "智能醫療報告翻譯助手",
+            "app_description": "為澳洲華人社群提供專業醫學報告翻譯與科普解釋服務",
+            
+            # 語言選擇
+            "lang_selection": "選擇語言 / Choose Language",
+            
+            # 免責聲明
+            "disclaimer_title": "重要醫療免責聲明",
+            "disclaimer_items": [
+                "本工具僅提供醫學報告的翻譯和科普解釋，不構成任何醫療建議、診斷或治療建議",
+                "所有醫療決策請務必諮詢您的主治醫師或其他醫療專業人員",
+                "AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊",
+                "如有任何緊急醫療狀況，請立即撥打000或前往最近的急診室"
+            ],
+            
+            # 輸入相關
+            "input_placeholder": "請輸入您的英文放射科報告內容...",
+            "file_upload": "或上傳報告檔案",
+            "supported_formats": "支援格式：PDF、TXT、DOCX",
+            
+            # 按鈕
+            "translate_button": "🚀 開始智能解讀",
+            "processing": "正在處理中...",
+            
+            # 使用量追蹤
+            "usage_today": "今日已使用",
+            "usage_remaining": "剩餘次數",
+            "usage_quota_exceeded": "今日免費額度已用完",
+            "usage_reset_time": "額度將在明日午夜重置（澳洲東部時間）",
+            
+            # 錯誤訊息
+            "error_empty_input": "請輸入報告內容或上傳檔案",
+            "error_file_too_large": "檔案過大，請上傳小於10MB的檔案",
+            "error_unsupported_format": "不支援的檔案格式",
+            "error_content_too_short": "內容過短，請確保包含完整的醫學報告",
+            "warning_no_medical": "內容中未發現明顯的醫學術語，請確認這是一份放射科報告",
+            
+            # 成功訊息
+            "translation_complete": "🎉 翻譯完成！",
+            "file_uploaded": "✅ 檔案上傳成功",
+            
+            # 回饋相關
+            "feedback_title": "💬 您的回饋",
+            "feedback_helpful": "這個翻譯對您有幫助嗎？",
+            "feedback_clarity": "清晰度評分",
+            "feedback_usefulness": "實用性評分", 
+            "feedback_accuracy": "準確性評分",
+            "feedback_recommendation": "推薦指數",
+            "feedback_issues": "遇到的問題",
+            "feedback_suggestion": "改進建議",
+            "feedback_email": "電子郵件（選填）",
+            "feedback_submit": "提交回饋",
+            "feedback_submitted": "感謝您的回饋！",
+            "feedback_already": "您已經提交過回饋了",
+            
+            # 底部資訊
+            "footer_support": "技術支援",
+            "footer_privacy": "隱私政策",
+            "footer_terms": "使用條款"
+        },
+        
+        "简体中文": {
+            "code": "simplified_chinese", 
+            "app_title": "RadiAI.Care",
+            "app_subtitle": "智能医疗报告翻译助手",
+            "app_description": "为澳洲华人社区提供专业医学报告翻译与科普解释服务",
+            
+            # 语言选择
+            "lang_selection": "选择语言 / Choose Language",
+            
+            # 免责声明
+            "disclaimer_title": "重要医疗免责声明",
+            "disclaimer_items": [
+                "本工具仅提供医学报告的翻译和科普解释，不构成任何医疗建议、诊断或治疗建议",
+                "所有医疗决策请务必咨询您的主治医师或其他医疗专业人员",
+                "AI翻译可能存在错误，请与医师核实所有重要医疗信息",
+                "如有任何紧急医疗状况，请立即拨打000或前往最近的急诊室"
+            ],
+            
+            # 输入相关
+            "input_placeholder": "请输入您的英文放射科报告内容...",
+            "file_upload": "或上传报告文件",
+            "supported_formats": "支持格式：PDF、TXT、DOCX",
+            
+            # 按钮
+            "translate_button": "🚀 开始智能解读",
+            "processing": "正在处理中...",
+            
+            # 使用量追踪
+            "usage_today": "今日已使用",
+            "usage_remaining": "剩余次数",
+            "usage_quota_exceeded": "今日免费额度已用完",
+            "usage_reset_time": "额度将在明日午夜重置（澳洲东部时间）",
+            
+            # 错误信息
+            "error_empty_input": "请输入报告内容或上传文件",
+            "error_file_too_large": "文件过大，请上传小于10MB的文件",
+            "error_unsupported_format": "不支持的文件格式",
+            "error_content_too_short": "内容过短，请确保包含完整的医学报告",
+            "warning_no_medical": "内容中未发现明显的医学术语，请确认这是一份放射科报告",
+            
+            # 成功信息
+            "translation_complete": "🎉 翻译完成！",
+            "file_uploaded": "✅ 文件上传成功",
+            
+            # 反馈相关
+            "feedback_title": "💬 您的反馈",
+            "feedback_helpful": "这个翻译对您有帮助吗？",
+            "feedback_clarity": "清晰度评分",
+            "feedback_usefulness": "实用性评分",
+            "feedback_accuracy": "准确性评分", 
+            "feedback_recommendation": "推荐指数",
+            "feedback_issues": "遇到的问题",
+            "feedback_suggestion": "改进建议",
+            "feedback_email": "电子邮件（选填）",
+            "feedback_submit": "提交反馈",
+            "feedback_submitted": "感谢您的反馈！",
+            "feedback_already": "您已经提交过反馈了",
+            
+            # 底部信息
+            "footer_support": "技术支持",
+            "footer_privacy": "隐私政策", 
+            "footer_terms": "使用条款"
+        }
+    }
+    
+    @classmethod
+    def get_language_config(cls, language: str) -> Dict[str, str]:
+        """獲取指定語言的配置"""
+        return cls.LANGUAGE_CONFIG.get(language, cls.LANGUAGE_CONFIG["简体中文"])
+
+
+# Google Sheets 配置
+GOOGLE_SHEETS_CONFIG = {
+    "scopes": [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.readonly"
+    ],
+    "sheet_id": "1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4",
+    "usage_sheet": "UsageLog",
+    "feedback_sheet": "Feedback"
 }
 
 
-# ────────────────────────────────────────────────────
-# 3. 全域 CSS 樣式（修復深色模式／手機白字）
-# ────────────────────────────────────────────────────
-CSS_STYLES: str = """
+# CSS 樣式（保持原有的樣式）
+CSS_STYLES = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap');
 
@@ -200,9 +391,6 @@ CSS_STYLES: str = """
 """
 
 
-# ────────────────────────────────────────────────────
-# 4. 輔助函式：在 Streamlit 注入 CSS
-# ────────────────────────────────────────────────────
 def inject_css() -> None:
-    """將全域樣式注入目前的 Streamlit 頁面。"""
+    """將全域樣式注入目前的 Streamlit 頁面"""
     st.markdown(CSS_STYLES, unsafe_allow_html=True)
