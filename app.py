@@ -414,59 +414,114 @@ class RadiAIApp:
             return all(os.getenv(var) for var in required_vars)
         except:
             return False
-    def debug_feedback_in_app():
-        """在應用中添加調試工具"""
-        if st.sidebar.checkbox("🔧 顯示調試工具"):
-            st.sidebar.markdown("---")
-            st.sidebar.markdown("### 回饋調試")
-            
-            if st.sidebar.button("🔍 診斷回饋功能"):
-                # 這裡會顯示診斷結果
+# 修復的調試代碼 - 添加到 app.py 文件
+# ==========================================
+
+def debug_feedback_in_app():
+    """在應用中添加調試工具"""
+    if st.sidebar.checkbox("🔧 顯示調試工具"):
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 回饋調試")
+        
+        if st.sidebar.button("🔍 診斷回饋功能"):
+            try:
                 from log_to_sheets import GoogleSheetsLogger
                 
-                try:
-                    logger = GoogleSheetsLogger()
-                    if logger._initialize_client():
-                        if logger.feedback_worksheet:
-                            headers = logger.feedback_worksheet.row_values(1)
-                            st.sidebar.success(f"✅ Feedback工作表連接正常")
-                            st.sidebar.write(f"標題行: {len(headers)} 個欄位")
-                        else:
-                            st.sidebar.error("❌ Feedback工作表不存在")
+                logger = GoogleSheetsLogger()
+                if logger._initialize_client():
+                    if logger.feedback_worksheet:
+                        headers = logger.feedback_worksheet.row_values(1)
+                        st.sidebar.success(f"✅ Feedback工作表連接正常")
+                        st.sidebar.write(f"標題行: {len(headers)} 個欄位")
+                        st.sidebar.write(f"前5個標題: {headers[:5]}")
+                        
+                        # 檢查現有數據
+                        all_values = logger.feedback_worksheet.get_all_values()
+                        st.sidebar.info(f"📊 總行數: {len(all_values)}")
                     else:
-                        st.sidebar.error("❌ 無法連接Google Sheets")
-                except Exception as e:
-                    st.sidebar.error(f"❌ 錯誤: {e}")
+                        st.sidebar.error("❌ Feedback工作表不存在")
+                else:
+                    st.sidebar.error("❌ 無法連接Google Sheets")
+            except Exception as e:
+                st.sidebar.error(f"❌ 錯誤: {e}")
+                st.sidebar.write(f"詳細錯誤: {str(e)}")
+        
+        if st.sidebar.button("🧪 測試回饋提交"):
+            try:
+                from log_to_sheets import log_feedback_to_sheets
+                import time
+                
+                test_data = {
+                    'translation_id': f'debug_test_{int(time.time())}',
+                    'language': '简体中文',
+                    'feedback_type': 'debug_test',
+                    'sentiment': 'positive',
+                    'clarity_score': 5,
+                    'usefulness_score': 5,
+                    'accuracy_score': 5,
+                    'recommendation_score': 10,
+                    'overall_satisfaction': 5.0,
+                    'issues': '調試測試',
+                    'suggestion': '調試建議',
+                    'email': 'debug@test.com',
+                    'report_length': 1000,
+                    'file_type': 'manual',
+                    'medical_terms_detected': 5,
+                    'confidence_score': 0.85,
+                    'app_version': 'v4.2-debug'
+                }
+                
+                # 顯示要提交的數據
+                st.sidebar.write("📤 提交數據:")
+                st.sidebar.json(test_data)
+                
+                # 嘗試提交
+                success = log_feedback_to_sheets(**test_data)
+                
+                if success:
+                    st.sidebar.success("✅ 測試提交成功！")
+                    st.sidebar.info(f"測試ID: {test_data['translation_id']}")
+                else:
+                    st.sidebar.error("❌ 測試提交失敗")
+                    
+            except Exception as e:
+                st.sidebar.error(f"❌ 測試失敗: {e}")
 
-  
+# 修復的 main() 函數
+# ===================
+
 def main():
     """主函數"""
     try:
         app = RadiAIApp()
         app.run()
+        
+        # 添加調試工具
+        debug_feedback_in_app()
+        
     except Exception as e:
-         # 最後的錯誤處理
+        # 最後的錯誤處理
         st.error("🚨 應用啟動失敗")
         st.exception(e)
-            
+        
         st.markdown("""
         ### 🆘 緊急恢復步驟：
-            
+        
         1. **檢查文件結構**：確保所有必要文件都存在
         2. **檢查環境變量**：確保 OPENAI_API_KEY 和 GOOGLE_SHEET_SECRET_B64 已設置
         3. **檢查依賴包**：運行 `pip install -r requirements.txt`
         4. **檢查新增模塊**：
-            - `utils/security.py` - 安全管理模塊
-            - `utils/exceptions.py` - 異常處理模塊
+           - `utils/security.py` - 安全管理模塊
+           - `utils/exceptions.py` - 異常處理模塊
         5. **聯繫支援**：發送錯誤信息至 support@radiai.care
-            
+        
         ### 🔍 快速診斷：
         """)
-            
+        
         # 簡單的文件結構檢查
         import os
         from pathlib import Path
-            
+        
         required_files = [
             "config/settings.py",
             "utils/translator.py", 
@@ -478,13 +533,13 @@ def main():
             "components/ui_components.py",
             "log_to_sheets.py"
         ]
-            
+        
         for file_path in required_files:
             if Path(file_path).exists():
                 st.success(f"✅ {file_path}")
             else:
                 st.error(f"❌ {file_path} - 文件缺失")
-            
+        
         # Logo 文件檢查
         logo_paths = ["assets/llogo", "assets/llogo.png", "llogo", "llogo.png"]
         logo_found = False
@@ -493,9 +548,12 @@ def main():
                 st.success(f"✅ Logo: {logo_path}")
                 logo_found = True
                 break
-            
+        
         if not logo_found:
             st.warning("⚠️ Logo 文件未找到，將使用默認圖標")
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
