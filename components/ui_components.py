@@ -2,6 +2,7 @@
 RadiAI.Care UI 組件 - 修復版
 修復硬編碼中文問題，完全使用語言配置
 添加隱私政策和使用條款顯示功能
+改進輸入方式為按鈕選擇
 """
 
 import streamlit as st
@@ -342,31 +343,59 @@ class UIComponents:
                     st.markdown("[發送郵件](mailto:sales@radiai.care?subject=RadiAI.Care專業版諮詢)")
     
     def render_input_section(self, lang: Dict) -> Tuple[str, str]:
-        """渲染輸入區塊"""
+        """渲染輸入區塊 - 改為按鈕選擇方式"""
         st.markdown('<div class="input-section">', unsafe_allow_html=True)
         
-        # 輸入方式選擇
-        tab1, tab2 = st.tabs([f"📝 {lang.get('input_text', '文字輸入')}", f"📁 {lang['file_upload']}"])
+        # 初始化輸入方式狀態
+        if 'input_method' not in st.session_state:
+            st.session_state.input_method = 'text'
+        
+        # 輸入方式選擇按鈕
+        st.markdown("### 📝 請選擇輸入方式")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📝 文字輸入", 
+                        key="input_text_btn",
+                        use_container_width=True,
+                        type="primary" if st.session_state.input_method == 'text' else "secondary"):
+                st.session_state.input_method = 'text'
+                st.rerun()
+        
+        with col2:
+            if st.button("📁 上傳報告檔案", 
+                        key="input_file_btn",
+                        use_container_width=True,
+                        type="primary" if st.session_state.input_method == 'file' else "secondary"):
+                st.session_state.input_method = 'file'
+                st.rerun()
+        
+        st.markdown("---")
         
         report_text = ""
         file_type = "manual"
         
-        with tab1:
+        # 根據選擇顯示對應輸入界面
+        if st.session_state.input_method == 'text':
             # 文字輸入
+            st.markdown("#### 📝 請輸入英文放射科報告")
             report_text = st.text_area(
                 lang.get('input_label', '請輸入英文放射科報告：'),
                 height=200,
                 placeholder=lang['input_placeholder'],
-                help=lang.get('input_help', '支援直接複製貼上醫學報告文字')
+                help=lang.get('input_help', '支援直接複製貼上醫學報告文字'),
+                key="text_input_area"
             )
             file_type = "manual"
         
-        with tab2:
+        elif st.session_state.input_method == 'file':
             # 文件上傳
+            st.markdown("#### 📁 上傳報告檔案")
             uploaded_file = st.file_uploader(
                 lang['file_upload'],
                 type=list(self.config.SUPPORTED_FILE_TYPES),
-                help=lang['supported_formats']
+                help=lang['supported_formats'],
+                key="file_uploader"
             )
             
             if uploaded_file:
@@ -382,7 +411,8 @@ class UIComponents:
                                 lang.get('extracted_content', '提取的內容：'),
                                 value=extracted_text[:1000] + ("..." if len(extracted_text) > 1000 else ""),
                                 height=150,
-                                disabled=True
+                                disabled=True,
+                                key="file_preview_area"
                             )
                         
                         report_text = extracted_text
@@ -431,70 +461,86 @@ class UIComponents:
             st.warning(quota_used_msg)
     
     def render_footer(self, lang: Dict):
-        """渲染頁腳"""
+        """渲染頁腳 - 隱藏技術支援，始終顯示隱私政策和使用條款"""
         st.markdown("---")
         
-        # 頁腳內容和隱私政策、使用條款
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown(f"📧 {lang['footer_support']}: support@radiai.care")
-        
-        with col2:
-            # 隱私政策
-            privacy_text = lang['footer_privacy']
-            if st.button(privacy_text, key="privacy_button", help="點擊查看隱私政策"):
-                self._show_privacy_policy(lang)
-        
-        with col3:
-            # 使用條款
-            terms_text = lang['footer_terms']
-            if st.button(terms_text, key="terms_button", help="點擊查看使用條款"):
-                self._show_terms_of_service(lang)
-        
-        # 顯示簡短摘要（方式2實現）
-        privacy_summary = lang.get('privacy_summary', '')
-        terms_summary = lang.get('terms_summary', '')
+        # 隱私政策和使用條款 - 始終顯示，使用較小字體
+        privacy_policy_text = lang.get('privacy_summary', '我們僅收集翻譯服務必要的資訊，符合澳洲隱私法規定。')
+        terms_text = lang.get('terms_summary', '本服務僅提供醫學報告翻譯，不構成醫療建議。')
         
         st.markdown(f"""
-        <div class="privacy-terms-summary">
-            🔒 {privacy_summary} | ⚖️ {terms_summary}
+        <div style="
+            font-size: 0.75rem;
+            color: #666;
+            text-align: center;
+            padding: 1rem 0;
+            line-height: 1.4;
+            background: rgba(0,0,0,0.02);
+            border-radius: 8px;
+            margin: 1rem 0;
+        ">
+            <div style="margin-bottom: 0.5rem;">
+                <strong>🔒 {lang['footer_privacy']}：</strong> {privacy_policy_text}
+            </div>
+            <div>
+                <strong>⚖️ {lang['footer_terms']}：</strong> {terms_text}
+            </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # 可點擊的詳細查看按鈕（可選）
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            with st.expander("📋 查看完整條款", expanded=False):
+                tab1, tab2 = st.tabs([lang['footer_privacy'], lang['footer_terms']])
+                
+                with tab1:
+                    self._show_privacy_policy_content(lang)
+                    
+                with tab2:
+                    self._show_terms_of_service_content(lang)
     
-    def _show_privacy_policy(self, lang: Dict):
+    def _show_privacy_policy_content(self, lang: Dict):
         """顯示隱私政策詳細內容"""
-        privacy_title = "🔒 隱私政策" if lang["code"] == "traditional_chinese" else "🔒 隐私政策"
+        st.markdown("### RadiAI.Care 隱私政策" if lang["code"] == "traditional_chinese" else "### RadiAI.Care 隐私政策")
         
-        with st.expander(privacy_title, expanded=True):
-            st.markdown("### RadiAI.Care 隱私政策" if lang["code"] == "traditional_chinese" else "### RadiAI.Care 隐私政策")
-            
-            for i, item in enumerate(lang.get('privacy_details', []), 1):
-                st.markdown(f"""
-                <div class="privacy-terms-content">
-                    <strong>{i}.</strong> {item}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            contact_text = "如有任何隱私相關問題，請聯繫：" if lang["code"] == "traditional_chinese" else "如有任何隐私相关问题，请联系："
-            st.markdown(f"**{contact_text}** privacy@radiai.care")
+        for i, item in enumerate(lang.get('privacy_details', []), 1):
+            st.markdown(f"""
+            <div style="
+                margin: 0.5rem 0;
+                padding: 0.8rem;
+                background: rgba(245, 245, 245, 0.8);
+                border-radius: 8px;
+                font-size: 0.9rem;
+                line-height: 1.5;
+            ">
+                <strong>{i}.</strong> {item}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        contact_text = "如有任何隱私相關問題，請聯繫：" if lang["code"] == "traditional_chinese" else "如有任何隐私相关问题，请联系："
+        st.markdown(f"**{contact_text}** privacy@radiai.care")
     
-    def _show_terms_of_service(self, lang: Dict):
+    def _show_terms_of_service_content(self, lang: Dict):
         """顯示使用條款詳細內容"""
-        terms_title = "⚖️ 使用條款" if lang["code"] == "traditional_chinese" else "⚖️ 使用条款"
+        st.markdown("### RadiAI.Care 使用條款" if lang["code"] == "traditional_chinese" else "### RadiAI.Care 使用条款")
         
-        with st.expander(terms_title, expanded=True):
-            st.markdown("### RadiAI.Care 使用條款" if lang["code"] == "traditional_chinese" else "### RadiAI.Care 使用条款")
-            
-            for i, item in enumerate(lang.get('terms_details', []), 1):
-                st.markdown(f"""
-                <div class="privacy-terms-content">
-                    <strong>{i}.</strong> {item}
-                </div>
-                """, unsafe_allow_html=True)
-            
-            contact_text = "如有法律相關問題，請聯繫：" if lang["code"] == "traditional_chinese" else "如有法律相关问题，请联系："
-            st.markdown(f"**{contact_text}** legal@radiai.care")
+        for i, item in enumerate(lang.get('terms_details', []), 1):
+            st.markdown(f"""
+            <div style="
+                margin: 0.5rem 0;
+                padding: 0.8rem;
+                background: rgba(245, 245, 245, 0.8);
+                border-radius: 8px;
+                font-size: 0.9rem;
+                line-height: 1.5;
+            ">
+                <strong>{i}.</strong> {item}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        contact_text = "如有法律相關問題，請聯繫：" if lang["code"] == "traditional_chinese" else "如有法律相关问题，请联系："
+        st.markdown(f"**{contact_text}** legal@radiai.care")
     
     def render_version_info(self):
         """渲染版本信息"""
