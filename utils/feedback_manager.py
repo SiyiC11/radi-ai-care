@@ -1,6 +1,6 @@
 """
 RadiAI.Care 回饋管理系統 - 修復版
-移除 st.rerun() 調用，修復回饋提交問題
+整合測試功能，確保回饋正確記錄到 Google Sheets
 """
 
 import streamlit as st
@@ -11,12 +11,13 @@ from config.settings import AppConfig
 
 logger = logging.getLogger(__name__)
 
-# 延遲導入避免循環依賴
+# 直接導入回饋記錄函數
 def get_feedback_logger():
     try:
         from log_to_sheets import log_feedback_to_sheets
         return log_feedback_to_sheets
-    except ImportError:
+    except ImportError as e:
+        logger.error(f"無法導入回饋記錄函數: {e}")
         return None
 
 
@@ -178,6 +179,7 @@ class FeedbackManager:
                              report_text: str, file_type: str, validation_result: Dict) -> bool:
         """處理快速回饋"""
         try:
+            # 準備回饋數據（與測試功能完全一致的格式）
             feedback_data = {
                 'translation_id': translation_id,
                 'language': st.session_state.language,
@@ -187,23 +189,22 @@ class FeedbackManager:
                 'usefulness_score': 0,
                 'accuracy_score': 0,
                 'recommendation_score': 0,
-                'overall_satisfaction': 0,
-                'issues': '',
-                'suggestion': '',
+                'overall_satisfaction': 0.0,
+                'issues': '快速回饋',
+                'suggestion': f'快速回饋：{sentiment}',
                 'email': '',
                 'report_length': len(report_text),
                 'file_type': file_type,
                 'medical_terms_detected': len(validation_result.get('found_terms', [])),
                 'confidence_score': round(validation_result.get('confidence', 0), 2),
-                'app_version': self.config.APP_VERSION,
-                'device_id': st.session_state.get('device_id', 'unknown'),
-                'session_id': st.session_state.get('user_session_id', 'unknown')
+                'app_version': self.config.APP_VERSION
             }
             
-            success = self._log_feedback(feedback_data)
+            # 記錄回饋數據
+            success = self._log_feedback_to_sheets(feedback_data)
             
             if success:
-                # 標記為已提交（不使用 st.rerun()）
+                # 標記為已提交
                 st.session_state.feedback_submitted_ids.add(translation_id)
                 logger.info(f"快速回饋提交成功: {translation_id}")
                 return True
@@ -225,6 +226,7 @@ class FeedbackManager:
             # 計算整體滿意度
             overall_satisfaction = round((clarity + usefulness + accuracy) / 3, 2)
             
+            # 準備回饋數據（與測試功能完全一致的格式）
             feedback_data = {
                 'translation_id': translation_id,
                 'language': st.session_state.language,
@@ -242,15 +244,14 @@ class FeedbackManager:
                 'file_type': file_type,
                 'medical_terms_detected': len(validation_result.get('found_terms', [])),
                 'confidence_score': round(validation_result.get('confidence', 0), 2),
-                'app_version': self.config.APP_VERSION,
-                'device_id': st.session_state.get('device_id', 'unknown'),
-                'session_id': st.session_state.get('user_session_id', 'unknown')
+                'app_version': self.config.APP_VERSION
             }
             
-            success = self._log_feedback(feedback_data)
+            # 記錄回饋數據
+            success = self._log_feedback_to_sheets(feedback_data)
             
             if success:
-                # 標記為已提交（不使用 st.rerun()）
+                # 標記為已提交
                 st.session_state.feedback_submitted_ids.add(translation_id)
                 logger.info(f"詳細回饋提交成功: {translation_id}")
                 return True
@@ -262,25 +263,27 @@ class FeedbackManager:
             logger.error(f"處理詳細回饋失敗: {e}")
             return False
     
-    def _log_feedback(self, feedback_data: Dict[str, Any]) -> bool:
-        """記錄回饋到 Google Sheets"""
+    def _log_feedback_to_sheets(self, feedback_data: Dict[str, Any]) -> bool:
+        """記錄回饋到 Google Sheets（使用與測試功能相同的邏輯）"""
         try:
+            # 獲取回饋記錄函數
             log_feedback_func = get_feedback_logger()
             if not log_feedback_func:
-                logger.error("無法導入回饋記錄函數")
+                logger.error("無法獲取回饋記錄函數")
                 return False
             
+            # 調用記錄函數（與測試功能完全相同）
             success = log_feedback_func(**feedback_data)
             
             if success:
                 logger.info(f"回饋記錄成功: {feedback_data['translation_id']}")
+                return True
             else:
                 logger.error(f"回饋記錄失敗: {feedback_data['translation_id']}")
-            
-            return success
-            
+                return False
+                
         except Exception as e:
-            logger.error(f"回饋記錄異常: {e}")
+            logger.error(f"記錄回饋到 Google Sheets 時發生異常: {e}")
             return False
     
     def get_feedback_stats(self) -> Dict[str, Any]:
@@ -296,19 +299,6 @@ class FeedbackManager:
             'feedback_rate': round(feedback_rate, 1)
         }
     
-    def render_feedback_stats(self):
-        """渲染回饋統計信息（供調試使用）"""
-        if st.checkbox("顯示回饋統計", key="show_feedback_stats"):
-            stats = self.get_feedback_stats()
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("回饋次數", stats['total_feedbacks'])
-            with col2:
-                st.metric("翻譯次數", stats['total_translations'])
-            with col3:
-                st.metric("回饋率", f"{stats['feedback_rate']}%")
-    
     def clear_feedback_history(self):
         """清除回饋歷史（僅用於測試）"""
         st.session_state.feedback_submitted_ids = set()
@@ -323,3 +313,40 @@ class FeedbackManager:
             'submitted_ids': list(st.session_state.get('feedback_submitted_ids', set())),
             'export_time': time.strftime('%Y-%m-%d %H:%M:%S')
         }
+
+    def test_feedback_connection(self) -> bool:
+        """測試回饋功能連接（用於診斷）"""
+        try:
+            # 測試數據（與原本測試功能相同）
+            test_data = {
+                'translation_id': f'test_connection_{int(time.time())}',
+                'language': '简体中文',
+                'feedback_type': 'connection_test',
+                'sentiment': 'positive',
+                'clarity_score': 5,
+                'usefulness_score': 5,
+                'accuracy_score': 5,
+                'recommendation_score': 10,
+                'overall_satisfaction': 5.0,
+                'issues': '連接測試',
+                'suggestion': '測試回饋功能連接',
+                'email': 'test@connection.com',
+                'report_length': 1000,
+                'file_type': 'test',
+                'medical_terms_detected': 5,
+                'confidence_score': 0.85,
+                'app_version': f'{self.config.APP_VERSION}-test'
+            }
+            
+            success = self._log_feedback_to_sheets(test_data)
+            
+            if success:
+                logger.info(f"回饋功能連接測試成功: {test_data['translation_id']}")
+                return True
+            else:
+                logger.error("回饋功能連接測試失敗")
+                return False
+                
+        except Exception as e:
+            logger.error(f"測試回饋連接時發生錯誤: {e}")
+            return False
