@@ -178,6 +178,7 @@ def get_prompt(language: str) -> str:
     
     return prompts.get(language, prompts["simplified_chinese"])
 
+
 def get_processing_steps(language: str) -> list:
     """
     獲取處理步驟描述
@@ -213,6 +214,7 @@ def get_processing_steps(language: str) -> list:
     
     return steps.get(language, steps["simplified_chinese"])
 
+
 def create_enhanced_disclaimer(language: str) -> str:
     """
     創建增強的免責聲明
@@ -235,4 +237,207 @@ def create_enhanced_disclaimer(language: str) -> str:
             🔸 <strong>純翻譯服務</strong>：以上內容僅為醫學報告的翻譯和科普解釋，不構成任何醫療建議、診斷或治療建議。
         </div>
         <div style="margin-bottom: 0.8rem;">
-            🔸 <strong>專業諮詢</strong>：所有醫療決策請務必諮詢您的主
+            🔸 <strong>專業諮詢</strong>：所有醫療決策請務必諮詢您的主治醫師或其他醫療專業人員。
+        </div>
+        <div style="margin-bottom: 0.8rem;">
+            🔸 <strong>翻譯準確性</strong>：AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。
+        </div>
+        <div style="text-align: center; margin-top: 1rem; padding: 0.8rem; background: rgba(255, 193, 7, 0.1); border-radius: 8px; font-style: italic;">
+            🆘 如有任何緊急醫療狀況，請立即撥打000或前往最近的急診室
+        </div>
+    </div>
+</div>
+        """,
+        
+        "simplified_chinese": """
+<div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border: 2px solid #ff9800; border-radius: 12px; padding: 1.5rem; margin-top: 2rem; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.15);">
+    <div style="text-align: center; font-weight: bold; color: #bf360c; font-size: 1.1rem; margin-bottom: 1rem;">
+        ⚠️ 重要医疗免责声明
+    </div>
+    <div style="color: #d84315; font-weight: 500; line-height: 1.6;">
+        <div style="margin-bottom: 0.8rem;">
+            🔸 <strong>纯翻译服务</strong>：以上内容仅为医学报告的翻译和科普解释，不构成任何医疗建议、诊断或治疗建议。
+        </div>
+        <div style="margin-bottom: 0.8rem;">
+            🔸 <strong>专业咨询</strong>：所有医疗决策请务必咨询您的主治医师或其他医疗专业人员。
+        </div>
+        <div style="margin-bottom: 0.8rem;">
+            🔸 <strong>翻译准确性</strong>：AI翻译可能存在错误，请与医师核实所有重要医疗信息。
+        </div>
+        <div style="text-align: center; margin-top: 1rem; padding: 0.8rem; background: rgba(255, 193, 7, 0.1); border-radius: 8px; font-style: italic;">
+            🆘 如有任何紧急医疗状况，请立即拨打000或前往最近的急诊室
+        </div>
+    </div>
+</div>
+        """
+    }
+    
+    return disclaimers.get(language, disclaimers["simplified_chinese"])
+
+
+def get_error_messages(language: str) -> dict:
+    """
+    獲取錯誤訊息
+    
+    Args:
+        language: 目標語言代碼
+        
+    Returns:
+        錯誤訊息字典
+    """
+    
+    messages = {
+        "traditional_chinese": {
+            "empty_input": "請輸入報告內容或上傳檔案",
+            "content_too_short": "內容過短，請確保包含完整的醫學報告內容",
+            "content_too_long": "內容過長，請分段處理",
+            "no_medical_terms": "內容中未發現明顯的醫學術語，請確認這是一份放射科報告",
+            "translation_failed": "翻譯失敗，請稍後重試",
+            "api_error": "AI服務暫時不可用，請稍後重試",
+            "rate_limit": "請求過於頻繁，請稍後重試",
+            "timeout": "請求超時，請檢查網路連線後重試"
+        },
+        
+        "simplified_chinese": {
+            "empty_input": "请输入报告内容或上传文件",
+            "content_too_short": "内容过短，请确保包含完整的医学报告内容",
+            "content_too_long": "内容过长，请分段处理",
+            "no_medical_terms": "内容中未发现明显的医学术语，请确认这是一份放射科报告",
+            "translation_failed": "翻译失败，请稍后重试",
+            "api_error": "AI服务暂时不可用，请稍后重试",
+            "rate_limit": "请求过于频繁，请稍后重试",
+            "timeout": "请求超时，请检查网络连接后重试"
+        }
+    }
+    
+    return messages.get(language, messages["simplified_chinese"])
+
+
+def get_success_messages(language: str) -> dict:
+    """
+    獲取成功訊息
+    
+    Args:
+        language: 目標語言代碼
+        
+    Returns:
+        成功訊息字典
+    """
+    
+    messages = {
+        "traditional_chinese": {
+            "translation_complete": "🎉 翻譯完成！",
+            "file_uploaded": "✅ 檔案上傳成功",
+            "validation_passed": "✅ 內容驗證通過",
+            "feedback_submitted": "感謝您的回饋！"
+        },
+        
+        "simplified_chinese": {
+            "translation_complete": "🎉 翻译完成！",
+            "file_uploaded": "✅ 文件上传成功",
+            "validation_passed": "✅ 内容验证通过",
+            "feedback_submitted": "感谢您的反馈！"
+        }
+    }
+    
+    return messages.get(language, messages["simplified_chinese"])
+
+
+def get_medical_terminology_guide(language: str) -> dict:
+    """
+    獲取醫學術語指南
+    
+    Args:
+        language: 目標語言代碼
+        
+    Returns:
+        醫學術語指南字典
+    """
+    
+    guides = {
+        "traditional_chinese": {
+            "imaging_types": {
+                "CT": "電腦斷層掃描",
+                "MRI": "磁共振影像",
+                "X-ray": "X光檢查",
+                "Ultrasound": "超音波檢查"
+            },
+            "anatomy": {
+                "chest": "胸部",
+                "abdomen": "腹部",
+                "brain": "腦部",
+                "spine": "脊椎"
+            },
+            "findings": {
+                "normal": "正常",
+                "abnormal": "異常",
+                "lesion": "病變",
+                "mass": "腫塊"
+            }
+        },
+        
+        "simplified_chinese": {
+            "imaging_types": {
+                "CT": "电脑断层扫描",
+                "MRI": "磁共振影像",
+                "X-ray": "X光检查",
+                "Ultrasound": "超声波检查"
+            },
+            "anatomy": {
+                "chest": "胸部",
+                "abdomen": "腹部",
+                "brain": "脑部",
+                "spine": "脊椎"
+            },
+            "findings": {
+                "normal": "正常",
+                "abnormal": "异常",
+                "lesion": "病变",
+                "mass": "肿块"
+            }
+        }
+    }
+    
+    return guides.get(language, guides["simplified_chinese"])
+
+
+def validate_prompt_response(response_text: str, language: str) -> dict:
+    """
+    驗證提示詞回應的質量
+    
+    Args:
+        response_text: AI回應文本
+        language: 語言代碼
+        
+    Returns:
+        驗證結果字典
+    """
+    
+    required_sections = ["📋", "🔍", "💡", "❓", "📞"]
+    found_sections = sum(1 for section in required_sections if section in response_text)
+    
+    # 檢查粗體標記
+    bold_count = response_text.count("**")
+    has_bold_formatting = bold_count >= 4  # 至少有兩對粗體標記
+    
+    # 檢查長度
+    is_adequate_length = len(response_text) >= 500
+    
+    # 質量評分
+    quality_score = 0
+    if found_sections >= 4:
+        quality_score += 40
+    if has_bold_formatting:
+        quality_score += 30
+    if is_adequate_length:
+        quality_score += 30
+    
+    return {
+        "quality_score": quality_score,
+        "found_sections": found_sections,
+        "required_sections": len(required_sections),
+        "has_bold_formatting": has_bold_formatting,
+        "is_adequate_length": is_adequate_length,
+        "word_count": len(response_text.split()),
+        "character_count": len(response_text)
+    }
