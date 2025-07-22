@@ -1,64 +1,64 @@
-import streamlit as st
-from typing import Callable
+from __future__ import annotations
+from typing import Optional
 
-# 你可以把 GoogleSheetsLogger 放在另一個檔案，這裡示範直接 import
-# from log_to_sheets import GoogleSheetsLogger
+import streamlit as st
+from log_to_sheets import FeedbackLogger
 
 
 class FeedbackManager:
-    """封裝 Streamlit UI 與 GoogleSheet 寫入流程。"""
+    """
+    Streamlit wrapper for rendering a feedback form and saving it via Google Sheets.
+    """
 
-    def __init__(self, logger: GoogleSheetsLogger):
-        self.logger = logger
+    def __init__(self, sheet_id: str):
+        self._logger = FeedbackLogger(sheet_id)
 
-    def render_feedback_section(
+    def render(
         self,
         translation_id: str,
-        file_type: str,
-        device_type: str,
-        user_agent: str,
-        extra_builder: Optional[Callable[[], dict]] = None,
-        key_suffix: str = "",
-    ):
-        """在頁面上渲染回饋表單。"""
-        form_key = f"feedback_form_{translation_id}_{key_suffix}"
-        sent_key = f"feedback_sent_{translation_id}_{key_suffix}"
+        *,
+        user_id: str | None = None,
+        language: str = "zh_TW",
+        file_type: str = "text",
+        device: str = "",
+        extra: str | dict = "",
+    ) -> None:
+        """
+        Renders a feedback form and persists the result to Google Sheets.
 
-        if st.session_state.get(sent_key):
-            st.info("你已提交過此筆回饋，感謝！")
+        After a successful submission, the form is disabled for that session.
+        """
+        key_prefix = f"fb_{translation_id}"
+        if st.session_state.get(f"{key_prefix}_done"):
+            st.success("🙏 感謝您的回饋！")
             return
 
-        with st.form(key=form_key):
-            feedback_text = st.text_area("留下你的意見或建議", key=f"feedback_text_{translation_id}_{key_suffix}")
-            lang = st.selectbox("語言", ["繁體中文", "简体中文"], index=0, key=f"feedback_lang_{translation_id}_{key_suffix}")
+        with st.form(key=f"{key_prefix}_form"):
+            st.write("### 回饋意見 (Feedback)")
+            feedback_text = st.text_area("請留下任何建議或錯誤回報…", height=160)
             submitted = st.form_submit_button("送出回饋")
 
-        if submitted:
-            payload = {
-                "translation_id": translation_id,
-                "feedback_text": feedback_text,
-                "language": lang,
-                "file_type": file_type,
-                "device_type": device_type,
-                "user_agent": user_agent,
-            }
-            if extra_builder:
-                try:
-                    payload["extra"] = extra_builder() or {}
-                except Exception:
-                    payload["extra"] = {"extra_error": "extra_builder failed"}
+        if not submitted:
+            return
 
-            ok, err = self.logger.append_feedback(payload)
-            if ok:
-                st.success("✅ 已成功寫入 Google Sheet")
-                st.session_state[sent_key] = True
-            else:
-                st.error("❌ 寫入失敗，請稍後再試")
-                with st.expander("錯誤細節 (debug)"):
-                    st.code(err or self.logger.last_error)
+        # 確保 extra 是 string
+        if isinstance(extra, dict):
+            import json
+            extra = json.dumps(extra, ensure_ascii=False)
 
-    def render_diagnose_block(self):
-        """顯示診斷資訊，方便 debug。"""
-        st.subheader("🩺 Google Sheet 診斷")
-        info = self.logger.diagnose()
-        st.json(info)
+        payload = {
+            "translation_id": translation_id,
+            "user_id": user_id or "",
+            "language": language,
+            "file_type": file_type,
+            "device": device,
+            "feedback_text": feedback_text.strip(),
+            "extra": extra,
+        }
+
+        ok = self._logger.log_feedback(**payload)
+        if ok:
+            st.success("✅ 已成功記錄至 Google Sheet")
+            st.session_state[f"{key_prefix}_done"] = True
+        else:
+            st.error("❌ 寫入失敗，請稍後再試或聯絡開發者。")
