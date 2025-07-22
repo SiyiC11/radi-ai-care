@@ -83,3 +83,18 @@ class FeedbackLogger:
             else:
                 row.append(data.get(col, data.get(key, "")))
         return row
+class UsageLogger(FeedbackLogger):
+    WORKSHEET_TITLE = "UsageLog"
+    HEADER = [
+        "Timestamp (UTC)",
+        "User ID",
+        "Daily Count",
+        "Session Count",
+        "Translation ID",
+        "Latency (ms)",
+        "Device",
+        "Extra",
+    ]
+
+    def log_usage(self, **kwargs: Any) -> bool:
+        return self.append(kwargs)
