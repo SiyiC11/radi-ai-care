@@ -379,7 +379,7 @@ def main():
     try:
         app = RadiAIApp()
         app.run()
-        
+        debug_feedback_in_app()
     except Exception as e:
         # 最後的錯誤處理
         st.error("🚨 應用啟動失敗")
