@@ -423,7 +423,68 @@ def debug_feedback_in_app():
         if st.sidebar.button("❌ 移除延遲測試"):
             st.session_state.api_delay_seconds = 0
             st.sidebar.success("✅ 延遲測試已移除")
-
+        if st.sidebar.button("🔍 檢查環境變量"):
+            import os
+            
+            api_key = os.getenv("OPENAI_API_KEY")
+            sheet_secret = os.getenv("GOOGLE_SHEET_SECRET_B64")
+            
+            st.sidebar.write("OPENAI_API_KEY:", "✅ 存在" if api_key else "❌ 缺失")
+            st.sidebar.write("GOOGLE_SHEET_SECRET_B64:", "✅ 存在" if sheet_secret else "❌ 缺失")
+            
+            if sheet_secret:
+                st.sidebar.write("Secret 長度:", len(sheet_secret))
+                try:
+                    import base64, json
+                    decoded = json.loads(base64.b64decode(sheet_secret))
+                    client_email = decoded.get('client_email', '未找到')
+                    st.sidebar.write("服務帳戶 Email:", client_email)
+                except Exception as e:
+                    st.sidebar.error(f"解析密鑰失敗: {e}")
+        if st.sidebar.button("🔗 測試 Google Sheets 連接"):
+            try:
+                import os
+                import base64
+                import json
+                import gspread
+                from oauth2client.service_account import ServiceAccountCredentials
+                
+                # 獲取環境變量
+                b64_secret = os.environ.get("GOOGLE_SHEET_SECRET_B64")
+                if not b64_secret:
+                    st.sidebar.error("❌ GOOGLE_SHEET_SECRET_B64 未設置")
+                    return
+                
+                # 解析服務帳戶
+                service_account_info = json.loads(base64.b64decode(b64_secret))
+                st.sidebar.success("✅ 服務帳戶解析成功")
+                st.sidebar.write("Client Email:", service_account_info.get('client_email'))
+                
+                # 創建憑證
+                scopes = [
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive.readonly"
+                ]
+                creds = ServiceAccountCredentials.from_json_keyfile_dict(service_account_info, scopes)
+                st.sidebar.success("✅ 憑證創建成功")
+                
+                # 初始化客戶端
+                client = gspread.authorize(creds)
+                st.sidebar.success("✅ 客戶端初始化成功")
+                
+                # 測試工作表訪問
+                sheet = client.open_by_key("1L0sFu5X3oFB3bnAKxhw8PhLJjHq0AjRcMLJEniAgrb4")
+                st.sidebar.success("✅ 工作表訪問成功")
+                
+                # 列出所有工作表
+                worksheets = sheet.worksheets()
+                worksheet_names = [ws.title for ws in worksheets]
+                st.sidebar.write("工作表列表:", worksheet_names)
+                
+            except Exception as e:
+                st.sidebar.error(f"❌ 連接失敗: {str(e)}")
+                st.sidebar.write("錯誤類型:", type(e).__name__)
+                
 def main():
     """主函數"""
     try:
