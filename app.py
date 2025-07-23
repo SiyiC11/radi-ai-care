@@ -197,12 +197,12 @@ def render_language_selection_fallback(lang_cfg):
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("繁體中文", key="lang_traditional", use_container_width=True,
+        if st.button("繁體中文", key="lang_traditional_fallback", use_container_width=True,
                     type="primary" if st.session_state.language == "繁體中文" else "secondary"):
             st.session_state.language = "繁體中文"
             st.rerun()
     with col2:
-        if st.button("简体中文", key="lang_simplified", use_container_width=True,
+        if st.button("简体中文", key="lang_simplified_fallback", use_container_width=True,
                     type="primary" if st.session_state.language == "简体中文" else "secondary"):
             st.session_state.language = "简体中文"
             st.rerun()
@@ -536,6 +536,9 @@ def main():
         lang_rendered = render_with_ui_components('render_language_selection', lang_cfg)
         if lang_rendered is None:
             render_language_selection_fallback(lang_cfg)
+            logger.info("Using fallback language selection")
+        else:
+            logger.info("Using Enhanced UI Components for language selection")
         
         # 重新獲取語言配置（可能已更改）
         lang_cfg = get_language_config(st.session_state.language)
