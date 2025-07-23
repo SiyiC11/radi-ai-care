@@ -37,11 +37,13 @@ except ImportError as e:
             st.markdown("### 選擇語言")
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("繁體中文", key="lang_trad", use_container_width=True):
+                if st.button("繁體中文", key="lang_trad_basic", use_container_width=True,
+                            type="primary" if st.session_state.get('language') == "繁體中文" else "secondary"):
                     st.session_state.language = "繁體中文"
                     st.rerun()
             with col2:
-                if st.button("简体中文", key="lang_simp", use_container_width=True):
+                if st.button("简体中文", key="lang_simp_basic", use_container_width=True,
+                            type="primary" if st.session_state.get('language') == "简体中文" else "secondary"):
                     st.session_state.language = "简体中文"
                     st.rerun()
         
