@@ -1,6 +1,6 @@
 """
-RadiAI.Care 完整主應用程序
-整合 Google Sheets 資料記錄、會話管理、翻譯功能的完整版本
+RadiAI.Care 完整主應用程序 - 修復版
+整合 Enhanced UI Components 和 Google Sheets 資料記錄
 """
 
 import os
@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 try:
     from config.settings import AppConfig, UIText, CSS_STYLES
     CONFIG_AVAILABLE = True
+    logger.info("Config modules loaded successfully")
 except ImportError as e:
     CONFIG_AVAILABLE = False
     logger.warning(f"配置模塊不可用: {e}")
@@ -32,6 +33,7 @@ except ImportError as e:
 try:
     from utils.file_handler import FileHandler
     FILE_HANDLER_AVAILABLE = True
+    logger.info("FileHandler loaded successfully")
 except ImportError:
     FILE_HANDLER_AVAILABLE = False
     logger.warning("文件處理器不可用")
@@ -39,6 +41,7 @@ except ImportError:
 try:
     from utils.translator import Translator
     TRANSLATOR_AVAILABLE = True
+    logger.info("Translator loaded successfully")
 except ImportError:
     TRANSLATOR_AVAILABLE = False
     logger.warning("翻譯器不可用")
@@ -46,9 +49,19 @@ except ImportError:
 try:
     from utils.comprehensive_sheets_manager import GoogleSheetsManager
     SHEETS_AVAILABLE = True
+    logger.info("GoogleSheetsManager loaded successfully")
 except ImportError:
     SHEETS_AVAILABLE = False
     logger.warning("Google Sheets 管理器不可用")
+
+# 導入 Enhanced UI Components
+try:
+    from components import EnhancedUIComponents, create_ui_components
+    UI_COMPONENTS_AVAILABLE = True
+    logger.info("Enhanced UI Components loaded successfully")
+except ImportError as e:
+    UI_COMPONENTS_AVAILABLE = False
+    logger.warning(f"Enhanced UI Components 不可用: {e}")
 
 # Streamlit 頁面配置
 st.set_page_config(
@@ -62,8 +75,9 @@ st.set_page_config(
 if CONFIG_AVAILABLE:
     try:
         st.markdown(CSS_STYLES, unsafe_allow_html=True)
-    except:
-        pass
+        logger.info("CSS styles injected successfully")
+    except Exception as e:
+        logger.warning(f"CSS injection failed: {e}")
 else:
     st.markdown("""
     <style>
@@ -87,8 +101,8 @@ def get_language_config(language="简体中文"):
     if CONFIG_AVAILABLE:
         try:
             return UIText.get_language_config(language)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to get language config: {e}")
     
     # 備用語言配置
     return {
@@ -128,11 +142,27 @@ def initialize_session_state():
         user_hash = hashlib.sha256(raw_data.encode()).hexdigest()[:16]
         st.session_state.permanent_user_id = f"user_{user_hash}"
     
+    # 初始化配置對象
+    if 'app_config' not in st.session_state:
+        st.session_state.app_config = AppConfig() if CONFIG_AVAILABLE else BasicConfig()
+    
+    # 初始化 UI 組件
+    if 'ui_components' not in st.session_state and UI_COMPONENTS_AVAILABLE:
+        try:
+            config = st.session_state.app_config
+            file_handler = FileHandler() if FILE_HANDLER_AVAILABLE else None
+            st.session_state.ui_components = create_ui_components(config, file_handler)
+            logger.info("UI components initialized successfully")
+        except Exception as e:
+            st.session_state.ui_components = None
+            logger.error(f"UI components initialization failed: {e}")
+    
     # 初始化 Google Sheets 管理器
     if 'sheets_manager' not in st.session_state and SHEETS_AVAILABLE:
         try:
-            config = BasicConfig()
-            st.session_state.sheets_manager = GoogleSheetsManager(config.GOOGLE_SHEET_ID)
+            config = st.session_state.app_config
+            sheet_id = getattr(config, 'GOOGLE_SHEET_ID', BasicConfig.GOOGLE_SHEET_ID)
+            st.session_state.sheets_manager = GoogleSheetsManager(sheet_id)
             logger.info("Google Sheets 管理器初始化成功")
         except Exception as e:
             st.session_state.sheets_manager = None
@@ -140,14 +170,29 @@ def initialize_session_state():
     elif not SHEETS_AVAILABLE:
         st.session_state.sheets_manager = None
 
-def render_header(lang_cfg):
-    """渲染頁面頭部"""
+def render_with_ui_components(component_method, *args, **kwargs):
+    """使用 UI 組件渲染，如果失敗則使用備用方法"""
+    ui_components = st.session_state.get('ui_components')
+    
+    if ui_components and hasattr(ui_components, component_method):
+        try:
+            method = getattr(ui_components, component_method)
+            return method(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"UI component method {component_method} failed: {e}")
+            return None
+    else:
+        logger.warning(f"UI component method {component_method} not available, using fallback")
+        return None
+
+def render_header_fallback(lang_cfg):
+    """備用標題渲染（無 logo）"""
     st.markdown('<div class="main-title">' + lang_cfg["app_title"] + '</div>', unsafe_allow_html=True)
     st.markdown(f"**{lang_cfg['app_subtitle']}**")
     st.info(lang_cfg["app_description"])
 
-def render_language_selection(lang_cfg):
-    """渲染語言選擇"""
+def render_language_selection_fallback(lang_cfg):
+    """備用語言選擇"""
     st.markdown(f"### {lang_cfg['lang_selection']}")
     
     col1, col2 = st.columns(2)
@@ -162,8 +207,8 @@ def render_language_selection(lang_cfg):
             st.session_state.language = "简体中文"
             st.rerun()
 
-def render_disclaimer(lang_cfg):
-    """渲染免責聲明"""
+def render_disclaimer_fallback(lang_cfg):
+    """備用免責聲明"""
     st.markdown("### ⚠️ " + lang_cfg['disclaimer_title'])
     
     for i, item in enumerate(lang_cfg["disclaimer_items"], 1):
@@ -194,6 +239,13 @@ def render_usage_status():
 
 def render_input_section(lang_cfg):
     """渲染輸入區域"""
+    # 嘗試使用 Enhanced UI Components
+    ui_result = render_with_ui_components('render_input_section', lang_cfg)
+    
+    if ui_result is not None:
+        return ui_result
+    
+    # 備用實現
     st.markdown("### 📝 輸入報告")
     
     # 選擇輸入方式
@@ -213,31 +265,28 @@ def render_input_section(lang_cfg):
             help=lang_cfg["supported_formats"]
         )
         
-        if uploaded_file:
-            if FILE_HANDLER_AVAILABLE:
-                try:
-                    file_handler = FileHandler()
-                    extracted_text, result = file_handler.extract_text(uploaded_file)
-                    if extracted_text:
-                        st.success("✅ 文件上傳成功")
-                        with st.expander("📄 文件內容預覽", expanded=False):
-                            preview_text = extracted_text[:500] + ("..." if len(extracted_text) > 500 else "")
-                            st.text_area("提取的內容：", value=preview_text, height=150, disabled=True)
-                        report_text = extracted_text
-                        file_type = uploaded_file.type
-                    else:
-                        st.error("❌ 文件處理失敗")
-                        report_text = ""
-                        file_type = "unknown"
-                except Exception as e:
-                    st.error(f"❌ 文件處理錯誤: {e}")
+        if uploaded_file and FILE_HANDLER_AVAILABLE:
+            try:
+                file_handler = FileHandler()
+                extracted_text, result = file_handler.extract_text(uploaded_file)
+                if extracted_text:
+                    st.success("✅ 文件上傳成功")
+                    with st.expander("📄 文件內容預覽", expanded=False):
+                        preview_text = extracted_text[:500] + ("..." if len(extracted_text) > 500 else "")
+                        st.text_area("提取的內容：", value=preview_text, height=150, disabled=True)
+                    report_text = extracted_text
+                    file_type = uploaded_file.type
+                else:
+                    st.error("❌ 文件處理失敗")
                     report_text = ""
-                    file_type = "error"
-            else:
-                st.error("❌ 文件處理功能不可用，請使用文字輸入")
+                    file_type = "unknown"
+            except Exception as e:
+                st.error(f"❌ 文件處理錯誤: {e}")
                 report_text = ""
-                file_type = "unavailable"
+                file_type = "error"
         else:
+            if not FILE_HANDLER_AVAILABLE:
+                st.error("❌ 文件處理功能不可用，請使用文字輸入")
             report_text = ""
             file_type = "none"
     
@@ -380,7 +429,7 @@ def log_feedback_to_sheets(translation_id, rating):
             'translation_id': translation_id,
             'user_id': st.session_state.permanent_user_id,
             'overall_satisfaction': rating,
-            'translation_quality': rating,  # 簡化版本使用相同評分
+            'translation_quality': rating,
             'speed_rating': rating,
             'ease_of_use': rating,
             'feature_completeness': rating,
@@ -443,7 +492,6 @@ def render_debug_panel():
         
         # 顯示系統狀態
         if st.sidebar.button("📊 系統狀態"):
-            sheets_status = st.session_state.get('sheets_manager') is not None
             debug_info = {
                 'translation_count': st.session_state.translation_count,
                 'daily_limit': st.session_state.daily_limit,
@@ -454,55 +502,12 @@ def render_debug_panel():
                     'config': CONFIG_AVAILABLE,
                     'translator': TRANSLATOR_AVAILABLE,
                     'file_handler': FILE_HANDLER_AVAILABLE,
-                    'sheets_manager': sheets_status,
-                    'sheets_available_import': SHEETS_AVAILABLE
-                },
-                'sheets_connection_status': 'connected' if sheets_status else 'not_initialized'
+                    'sheets_manager': st.session_state.get('sheets_manager') is not None,
+                    'ui_components': UI_COMPONENTS_AVAILABLE,
+                    'ui_instance': st.session_state.get('ui_components') is not None
+                }
             }
             st.sidebar.json(debug_info)
-            
-            # 額外顯示 Sheets 狀態
-            if sheets_status:
-                st.sidebar.success("✅ Google Sheets 管理器已初始化")
-            else:
-                st.sidebar.error("❌ Google Sheets 管理器未初始化")
-                if not SHEETS_AVAILABLE:
-                    st.sidebar.warning("⚠️ Google Sheets 模塊導入失敗")
-        
-        # 測試 Google Sheets 連接
-        if st.sidebar.button("🧪 測試 Sheets 連接"):
-            if st.session_state.get('sheets_manager'):
-                try:
-                    # 測試連接
-                    connection_test = st.session_state.sheets_manager.test_connection()
-                    st.sidebar.json(connection_test)
-                    
-                    if connection_test.get('connected'):
-                        # 測試寫入
-                        test_data = {
-                            'user_id': 'test_user',
-                            'session_id': 'test_session',
-                            'translation_id': f'test_{int(time.time())}',
-                            'daily_count': 1,
-                            'processing_time_ms': 1000,
-                            'status': 'test',
-                            'language': 'zh_CN',
-                            'file_type': 'manual',
-                            'content_length': 100
-                        }
-                        
-                        write_result = st.session_state.sheets_manager.log_usage(test_data)
-                        if write_result:
-                            st.sidebar.success("✅ 寫入測試成功！")
-                        else:
-                            st.sidebar.error("❌ 寫入測試失敗")
-                    else:
-                        st.sidebar.error("❌ 連接失敗")
-                        
-                except Exception as e:
-                    st.sidebar.error(f"❌ 測試錯誤: {e}")
-            else:
-                st.sidebar.error("❌ Sheets 管理器未初始化")
         
         # 重置配額
         if st.sidebar.button("🔄 重置配額"):
@@ -519,13 +524,26 @@ def main():
         # 獲取語言配置
         lang_cfg = get_language_config(st.session_state.language)
         
-        # 渲染界面
-        render_header(lang_cfg)
-        render_language_selection(lang_cfg)
+        # 渲染頁面標題 - 優先使用 Enhanced UI Components
+        header_rendered = render_with_ui_components('render_header', lang_cfg)
+        if header_rendered is None:
+            render_header_fallback(lang_cfg)
+            logger.info("Using fallback header rendering")
+        else:
+            logger.info("Using Enhanced UI Components for header")
+        
+        # 渲染語言選擇 - 優先使用 Enhanced UI Components
+        lang_rendered = render_with_ui_components('render_language_selection', lang_cfg)
+        if lang_rendered is None:
+            render_language_selection_fallback(lang_cfg)
         
         # 重新獲取語言配置（可能已更改）
         lang_cfg = get_language_config(st.session_state.language)
-        render_disclaimer(lang_cfg)
+        
+        # 渲染免責聲明 - 優先使用 Enhanced UI Components
+        disclaimer_rendered = render_with_ui_components('render_disclaimer', lang_cfg)
+        if disclaimer_rendered is None:
+            render_disclaimer_fallback(lang_cfg)
         
         # 顯示使用狀態
         remaining = render_usage_status()
@@ -555,6 +573,12 @@ def main():
             st.markdown("🟢 **資料記錄：** 已連接")
         else:
             st.markdown("🟡 **資料記錄：** 離線模式")
+        
+        # 顯示 UI 組件狀態
+        if st.session_state.get('ui_components'):
+            st.markdown("🟢 **UI 組件：** Enhanced UI 已啟用")
+        else:
+            st.markdown("🟡 **UI 組件：** 基礎模式")
         
         # 調試面板
         render_debug_panel()
