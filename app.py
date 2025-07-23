@@ -177,13 +177,14 @@ def render_with_ui_components(component_method, *args, **kwargs):
     if ui_components and hasattr(ui_components, component_method):
         try:
             method = getattr(ui_components, component_method)
-            return method(*args, **kwargs)
+            method(*args, **kwargs)  # 執行方法，不返回值
+            return True  # 成功執行，返回 True
         except Exception as e:
             logger.error(f"UI component method {component_method} failed: {e}")
-            return None
+            return False  # 執行失敗，返回 False
     else:
         logger.warning(f"UI component method {component_method} not available, using fallback")
-        return None
+        return False  # 組件不可用，返回 False
 
 def render_header_fallback(lang_cfg):
     """備用標題渲染（無 logo）"""
@@ -240,29 +241,36 @@ def render_usage_status():
 def render_input_section(lang_cfg):
     """渲染輸入區域"""
     # 嘗試使用 Enhanced UI Components
-    ui_result = render_with_ui_components('render_input_section', lang_cfg)
+    input_success = render_with_ui_components('render_input_section', lang_cfg)
     
-    if ui_result is not None:
-        return ui_result
+    if input_success:
+        # Enhanced UI Components 成功，需要從 session state 獲取結果
+        # 或者讓 Enhanced UI 組件自己處理整個輸入邏輯
+        logger.info("Using Enhanced UI Components for input section")
+        # 返回默認值，因為 Enhanced UI 會自己處理
+        return "", "enhanced_ui"
     
     # 備用實現
+    logger.info("Using fallback input section")
     st.markdown("### 📝 輸入報告")
     
     # 選擇輸入方式
-    input_method = st.radio("選擇輸入方式:", ["文字輸入", "文件上傳"], horizontal=True)
+    input_method = st.radio("選擇輸入方式:", ["文字輸入", "文件上傳"], horizontal=True, key="input_method_fallback")
     
     if input_method == "文字輸入":
         report_text = st.text_area(
             "請輸入英文放射科報告：",
             height=200,
-            placeholder=lang_cfg["input_placeholder"]
+            placeholder=lang_cfg["input_placeholder"],
+            key="text_input_fallback"
         )
         file_type = "manual"
     else:
         uploaded_file = st.file_uploader(
             lang_cfg["file_upload"],
             type=['pdf', 'txt', 'docx'],
-            help=lang_cfg["supported_formats"]
+            help=lang_cfg["supported_formats"],
+            key="file_uploader_fallback"
         )
         
         if uploaded_file and FILE_HANDLER_AVAILABLE:
@@ -525,16 +533,16 @@ def main():
         lang_cfg = get_language_config(st.session_state.language)
         
         # 渲染頁面標題 - 優先使用 Enhanced UI Components
-        header_rendered = render_with_ui_components('render_header', lang_cfg)
-        if header_rendered is None:
+        header_success = render_with_ui_components('render_header', lang_cfg)
+        if not header_success:
             render_header_fallback(lang_cfg)
             logger.info("Using fallback header rendering")
         else:
             logger.info("Using Enhanced UI Components for header")
         
         # 渲染語言選擇 - 優先使用 Enhanced UI Components
-        lang_rendered = render_with_ui_components('render_language_selection', lang_cfg)
-        if lang_rendered is None:
+        lang_success = render_with_ui_components('render_language_selection', lang_cfg)
+        if not lang_success:
             render_language_selection_fallback(lang_cfg)
             logger.info("Using fallback language selection")
         else:
@@ -544,9 +552,12 @@ def main():
         lang_cfg = get_language_config(st.session_state.language)
         
         # 渲染免責聲明 - 優先使用 Enhanced UI Components
-        disclaimer_rendered = render_with_ui_components('render_disclaimer', lang_cfg)
-        if disclaimer_rendered is None:
+        disclaimer_success = render_with_ui_components('render_disclaimer', lang_cfg)
+        if not disclaimer_success:
             render_disclaimer_fallback(lang_cfg)
+            logger.info("Using fallback disclaimer rendering")
+        else:
+            logger.info("Using Enhanced UI Components for disclaimer")
         
         # 顯示使用狀態
         remaining = render_usage_status()
