@@ -443,6 +443,7 @@ def render_debug_panel():
         
         # 顯示系統狀態
         if st.sidebar.button("📊 系統狀態"):
+            sheets_status = st.session_state.get('sheets_manager') is not None
             debug_info = {
                 'translation_count': st.session_state.translation_count,
                 'daily_limit': st.session_state.daily_limit,
@@ -453,10 +454,20 @@ def render_debug_panel():
                     'config': CONFIG_AVAILABLE,
                     'translator': TRANSLATOR_AVAILABLE,
                     'file_handler': FILE_HANDLER_AVAILABLE,
-                    'sheets_manager': st.session_state.get('sheets_manager') is not None
-                }
+                    'sheets_manager': sheets_status,
+                    'sheets_available_import': SHEETS_AVAILABLE
+                },
+                'sheets_connection_status': 'connected' if sheets_status else 'not_initialized'
             }
             st.sidebar.json(debug_info)
+            
+            # 額外顯示 Sheets 狀態
+            if sheets_status:
+                st.sidebar.success("✅ Google Sheets 管理器已初始化")
+            else:
+                st.sidebar.error("❌ Google Sheets 管理器未初始化")
+                if not SHEETS_AVAILABLE:
+                    st.sidebar.warning("⚠️ Google Sheets 模塊導入失敗")
         
         # 測試 Google Sheets 連接
         if st.sidebar.button("🧪 測試 Sheets 連接"):
