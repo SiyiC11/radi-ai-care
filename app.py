@@ -353,58 +353,54 @@ def render_input_section(lang_cfg):
     
     if ui_components and hasattr(ui_components, 'render_input_section'):
         try:
-            # 调用 Enhanced UI Components 渲染界面
-            ui_components.render_input_section(lang_cfg)
+            # 调用 Enhanced UI Components，现在它会返回内容
+            result = ui_components.render_input_section(lang_cfg)
             
-            # 现在我们需要从 Enhanced UI 或 session state 获取用户输入
-            # Enhanced UI Components 可能使用这些键存储内容：
-            
-            # 1. 检查是否有文本输入
-            for text_key in ['text_input_area', 'report_text', 'user_input']:
-                if text_key in st.session_state and st.session_state[text_key]:
-                    text_content = st.session_state[text_key]
-                    logger.info(f"Found text input in session state: {text_key} = {len(text_content)} chars")
-                    return text_content, "manual"
-            
-            # 2. 检查是否有文件内容
-            for file_key in ['uploaded_file_content', 'file_content', 'extracted_text']:
-                if file_key in st.session_state and st.session_state[file_key]:
-                    file_content = st.session_state[file_key]
-                    file_type = st.session_state.get(f'{file_key}_type', 'application/pdf')
-                    logger.info(f"Found file content in session state: {file_key} = {len(file_content)} chars")
-                    return file_content, file_type
-            
-            # 3. 如果都没找到，检查当前页面是否有可见的输入内容
-            # 这是最后的尝试 - 直接检查可能的 widget 状态
-            
-            # 检查所有可能的文本输入键
-            for key in st.session_state:
-                if 'input' in key.lower() and st.session_state[key]:
-                    value = st.session_state[key]
-                    if isinstance(value, str) and len(value) > 10:  # 假设有效输入至少10个字符
-                        logger.info(f"Found potential input in session key: {key} = {len(value)} chars")
-                        return value, "session_state"
-            
-            # 如果Enhanced UI有get_current_input方法，尝试调用
-            if hasattr(ui_components, 'get_current_input'):
-                try:
-                    current_input = ui_components.get_current_input()
-                    if current_input:
-                        logger.info(f"Enhanced UI get_current_input returned: {type(current_input)}")
-                        if isinstance(current_input, tuple) and len(current_input) == 2:
-                            return current_input
-                        elif isinstance(current_input, str):
-                            return current_input, "enhanced_method"
-                except Exception as e:
-                    logger.warning(f"Enhanced UI get_current_input failed: {e}")
-            
-            # 如果什么都没找到，返回空但标记为enhanced_ui
-            logger.warning("Enhanced UI rendered but no content found in session state")
-            return "", "enhanced_ui_no_content"
-            
+            # Enhanced UI 现在应该返回 (text, file_type) 元组
+            if isinstance(result, tuple) and len(result) == 2:
+                report_text, file_type = result
+                logger.info(f"Enhanced UI returned: text_length={len(report_text) if report_text else 0}, file_type={file_type}")
+                
+                # 如果有内容，也存储到标准的 session state 键中
+                if report_text and report_text.strip():
+                    st.session_state['current_report_text'] = report_text
+                    st.session_state['current_file_type'] = file_type
+                
+                return report_text, file_type
+            else:
+                logger.warning(f"Enhanced UI returned unexpected format: {type(result)}")
+                # 回退到检查 session state
+                pass
+                
         except Exception as e:
             logger.error(f"Enhanced UI Components failed: {e}")
             # 如果Enhanced UI失败，回退到备用实现
+    
+    # 如果Enhanced UI没有返回正确内容，检查session state
+    if ui_components:
+        # 尝试从Enhanced UI存储的session state键获取内容
+        for text_key in ['text_input_area', 'report_text', 'uploaded_file_content', 'file_content', 'extracted_text']:
+            if text_key in st.session_state and st.session_state[text_key]:
+                text_content = st.session_state[text_key]
+                file_type = st.session_state.get(f'{text_key}_type', 'manual')
+                logger.info(f"Found content in session state: {text_key} = {len(text_content)} chars")
+                return text_content, file_type
+        
+        # 如果Enhanced UI有get_current_input方法，尝试调用
+        if hasattr(ui_components, 'get_current_input'):
+            try:
+                current_input = ui_components.get_current_input()
+                if current_input and isinstance(current_input, tuple) and len(current_input) == 2:
+                    text_content, file_type = current_input
+                    if text_content and text_content.strip():
+                        logger.info(f"Enhanced UI get_current_input returned: {len(text_content)} chars")
+                        return text_content, file_type
+            except Exception as e:
+                logger.warning(f"Enhanced UI get_current_input failed: {e}")
+        
+        # Enhanced UI 可用但没有找到内容
+        logger.warning("Enhanced UI rendered but no content found")
+        return "", "enhanced_ui_no_content"
     
     # 備用實現
     logger.info("Using fallback input section")
