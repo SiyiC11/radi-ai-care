@@ -573,13 +573,13 @@ def render_footer():
             🔒 {lang_cfg['footer_privacy_title']}
         </div>
         <div class="legal-text">
-            <strong>隱私保護：</strong>{lang_cfg['footer_privacy_text']}
+            <strong>{"隱私保護" if st.session_state.language == "繁體中文" else "隐私保护"}：</strong>{lang_cfg['footer_privacy_text']}
             <br><br>
-            <strong>服務條款：</strong>{lang_cfg['footer_terms_text']}
+            <strong>{"服務條款" if st.session_state.language == "繁體中文" else "服务条款"}：</strong>{lang_cfg['footer_terms_text']}
             <br><br>
-            <strong>免責聲明：</strong>{lang_cfg['footer_disclaimer_text']}
+            <strong>{"免責聲明" if st.session_state.language == "繁體中文" else "免责声明"}：</strong>{lang_cfg['footer_disclaimer_text']}
             <br><br>
-            <strong>聯繫我們：</strong>{lang_cfg['footer_contact_text']}
+            <strong>{"聯繫我們" if st.session_state.language == "繁體中文" else "联系我们"}：</strong>{lang_cfg['footer_contact_text']}
         </div>
     </div>
     """, unsafe_allow_html=True)
