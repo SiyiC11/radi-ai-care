@@ -88,7 +88,7 @@ else:
     .footer-info {
         text-align: center;
         color: #666;
-        font-size: 0.7rem;
+        font-size: 0.9rem;
         margin: 2rem 0 1rem 0;
         padding: 1rem 1.2rem;
         background: linear-gradient(145deg, #f2fbff 0%, #e3f4fa 100%);
