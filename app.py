@@ -86,28 +86,34 @@ else:
     .footer-info {
         text-align: center;
         color: #666;
-        font-size: 0.8rem;
+        font-size: 0.7rem;
         margin: 2rem 0 1rem 0;
-        padding: 1rem;
+        padding: 0.8rem;
         border-top: 1px solid #e0e0e0;
-        background: rgba(0,0,0,0.02);
-        border-radius: 8px;
+        background: rgba(0,0,0,0.01);
+        border-radius: 6px;
     }
     .version-info {
         text-align: center;
-        color: #888;
-        font-size: 0.85rem;
-        margin: 1.5rem 0;
-        padding: 0.8rem;
+        color: #6c757d;
+        font-size: 0.8rem;
+        margin: 1.5rem 0 0.5rem 0;
+        padding: 0.6rem;
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 12px;
+        border-radius: 10px;
         border: 1px solid #dee2e6;
     }
     .legal-text {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
         color: #777;
-        line-height: 1.4;
-        margin-top: 0.5rem;
+        line-height: 1.3;
+        margin-top: 0.4rem;
+    }
+    .privacy-title {
+        font-size: 0.7rem;
+        color: #495057;
+        margin-bottom: 0.6rem;
+        opacity: 0.8;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -131,25 +137,64 @@ def get_language_config(language="简体中文"):
             logger.warning(f"Failed to get language config: {e}")
     
     # 備用語言配置
-    return {
-        "code": "simplified_chinese",
-        "app_title": "RadiAI.Care",
-        "app_subtitle": "智能醫療報告翻譯助手",
-        "app_description": "為澳洲華人社區提供專業醫學報告翻譯服務",
-        "disclaimer_title": "重要醫療免責聲明",
-        "disclaimer_items": [
-            "本工具僅提供翻譯服務，不構成醫療建議",
-            "請諮詢專業醫師進行醫療決策",
-            "AI翻譯可能存在錯誤",
-            "緊急情況請撥打000"
-        ],
-        "input_placeholder": "請輸入英文放射科報告...",
-        "file_upload": "上傳文件",
-        "supported_formats": "支持PDF、TXT、DOCX格式",
-        "translate_button": "開始翻譯",
-        "error_empty_input": "請輸入內容",
-        "lang_selection": "選擇語言"
+    configs = {
+        "繁體中文": {
+            "code": "traditional_chinese",
+            "app_title": "RadiAI.Care",
+            "app_subtitle": "智能醫療報告翻譯助手",
+            "app_description": "為澳洲華人社群提供專業醫學報告翻譯服務",
+            "disclaimer_title": "重要醫療免責聲明",
+            "disclaimer_items": [
+                "本工具僅提供翻譯服務，不構成醫療建議",
+                "請諮詢專業醫師進行醫療決策",
+                "AI翻譯可能存在錯誤",
+                "緊急情況請撥打000"
+            ],
+            "input_placeholder": "請輸入英文放射科報告...",
+            "file_upload": "上傳文件",
+            "supported_formats": "支持PDF、TXT、DOCX格式",
+            "translate_button": "開始翻譯",
+            "error_empty_input": "請輸入內容",
+            "lang_selection": "選擇語言",
+            # 頁腳信息
+            "footer_privacy_title": "隱私政策與使用條款",
+            "footer_app_name": "智能醫療報告翻譯助手",
+            "footer_service_desc": "為澳洲華人社群服務",
+            "footer_privacy_text": "我們僅收集翻譯服務必要的資訊，所有數據採用加密傳輸和儲存，嚴格遵守澳洲隱私法（Privacy Act 1988）規定，絕不與第三方分享您的醫療資訊。",
+            "footer_terms_text": "本服務僅提供醫學報告翻譯和科普解釋，不構成任何醫療建議或診斷。用戶須為所有醫療決策自負責任，並應諮詢專業醫師意見。",
+            "footer_disclaimer_text": "AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。緊急情況請撥打000或前往最近的急診室。",
+            "footer_contact_text": "如有任何問題或建議，請聯繫 support@radiai.care | 本服務受澳洲法律管轄"
+        },
+        "简体中文": {
+            "code": "simplified_chinese",
+            "app_title": "RadiAI.Care",
+            "app_subtitle": "智能医疗报告翻译助手",
+            "app_description": "为澳洲华人社区提供专业医学报告翻译服务",
+            "disclaimer_title": "重要医疗免责声明",
+            "disclaimer_items": [
+                "本工具仅提供翻译服务，不构成医疗建议",
+                "请咨询专业医师进行医疗决策",
+                "AI翻译可能存在错误",
+                "紧急情况请拨打000"
+            ],
+            "input_placeholder": "请输入英文放射科报告...",
+            "file_upload": "上传文件",
+            "supported_formats": "支持PDF、TXT、DOCX格式",
+            "translate_button": "开始翻译",
+            "error_empty_input": "请输入内容",
+            "lang_selection": "选择语言",
+            # 页脚信息
+            "footer_privacy_title": "隐私政策与使用条款",
+            "footer_app_name": "智能医疗报告翻译助手",
+            "footer_service_desc": "为澳洲华人社区服务",
+            "footer_privacy_text": "我们仅收集翻译服务必要的信息，所有数据采用加密传输和存储，严格遵守澳洲隐私法（Privacy Act 1988）规定，绝不与第三方分享您的医疗信息。",
+            "footer_terms_text": "本服务仅提供医学报告翻译和科普解释，不构成任何医疗建议或诊断。用户须为所有医疗决策自负责任，并应咨询专业医师意见。",
+            "footer_disclaimer_text": "AI翻译可能存在错误，请与医师核实所有重要医疗信息。紧急情况请拨打000或前往最近的急诊室。",
+            "footer_contact_text": "如有任何问题或建议，请联系 support@radiai.care | 本服务受澳洲法律管辖"
+        }
     }
+    
+    return configs.get(language, configs["简体中文"])
 
 def initialize_session_state():
     """初始化會話狀態"""
@@ -518,32 +563,35 @@ def render_quota_exceeded():
 
 def render_footer():
     """渲染頁腳信息"""
-    # 版本信息
-    st.markdown("""
-    <div class="version-info">
-        <div style="font-weight: 600; color: #0d74b8; margin-bottom: 0.3rem;">
-            🏥 RadiAI.Care v4.2.0
+    # 获取当前语言配置
+    lang_cfg = get_language_config(st.session_state.language)
+    
+    # 隱私政策和使用條款
+    st.markdown(f"""
+    <div class="footer-info">
+        <div class="privacy-title">
+            🔒 {lang_cfg['footer_privacy_title']}
         </div>
-        <div style="color: #6c757d; font-size: 0.8rem;">
-            智能醫療報告翻譯助手 | 為澳洲華人社區服務
+        <div class="legal-text">
+            <strong>隱私保護：</strong>{lang_cfg['footer_privacy_text']}
+            <br><br>
+            <strong>服務條款：</strong>{lang_cfg['footer_terms_text']}
+            <br><br>
+            <strong>免責聲明：</strong>{lang_cfg['footer_disclaimer_text']}
+            <br><br>
+            <strong>聯繫我們：</strong>{lang_cfg['footer_contact_text']}
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # 隱私政策和使用條款
-    st.markdown("""
-    <div class="footer-info">
-        <div style="font-weight: 600; color: #495057; margin-bottom: 0.8rem;">
-            🔒 隱私政策與使用條款
+    # 版本信息 - 放在最后
+    st.markdown(f"""
+    <div class="version-info">
+        <div style="color: #0d74b8;">
+            🏥 RadiAI.Care v4.2.0
         </div>
-        <div class="legal-text">
-            <strong>隱私保護：</strong>我們僅收集翻譯服務必要的資訊，所有數據採用加密傳輸和儲存，嚴格遵守澳洲隱私法（Privacy Act 1988）規定，絕不與第三方分享您的醫療資訊。
-            <br><br>
-            <strong>服務條款：</strong>本服務僅提供醫學報告翻譯和科普解釋，不構成任何醫療建議或診斷。用戶須為所有醫療決策自負責任，並應諮詢專業醫師意見。
-            <br><br>
-            <strong>免責聲明：</strong>AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。緊急情況請撥打000或前往最近的急診室。
-            <br><br>
-            <strong>聯繫我們：</strong>如有任何問題或建議，請聯繫 support@radiai.care | 本服務受澳洲法律管轄
+        <div style="color: #6c757d; font-size: 0.75rem; margin-top: 0.2rem;">
+            {lang_cfg['footer_app_name']} | {lang_cfg['footer_service_desc']}
         </div>
     </div>
     """, unsafe_allow_html=True)
