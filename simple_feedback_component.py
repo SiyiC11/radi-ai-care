@@ -34,6 +34,15 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
     if lang_cfg.get('code') == 'traditional_chinese':
         title = "💭 幫助我們改進學習體驗"
         description = "您的建議將幫助我們優化這個醫學翻譯教育工具"
+        name_placeholder = "您的稱呼（選填）"
+        name_example = "例：醫學生小王"
+        feedback_label = "請分享您的使用體驗或改進建議"
+        feedback_placeholder = "例：希望增加醫學術語發音功能，或翻譯速度可以更快一些..."
+        submit_button = "💌 送出建議"
+        success_message = "✅ 感謝您的寶貴建議！我們會持續優化 RadiAI.Care！"
+    else:  # 简体中文
+        title = "💭 帮助我们改进学习体验"
+        description = "您的建议将帮助我们优化这个医学翻译教育工具"
         name_placeholder = "您的称呼（选填）"
         name_example = "例：医学生小王"
         feedback_label = "请分享您的使用体验或改进建议"
@@ -164,53 +173,6 @@ def _get_user_agent() -> str:
     # 返回一个标识 Streamlit 应用的字符串
     return "RadiAI.Care/4.2.0 (Streamlit Web App)"
 
-def render_feedback_summary(sheets_manager) -> None:
-    """
-    渲染反馈统计摘要（可选功能，用于管理员查看）
-    
-    Args:
-        sheets_manager: Google Sheets 管理器实例
-    """
-    try:
-        # 获取今日分析数据
-        analytics = sheets_manager.get_daily_analytics()
-        
-        if analytics:
-            with st.expander("📊 今日反馈统计", expanded=False):
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric(
-                        "简单反馈数", 
-                        analytics.get('simple_feedback_count', 0),
-                        help="用户通过简单反馈表单提交的建议数量"
-                    )
-                
-                with col2:
-                    st.metric(
-                        "详细反馈数", 
-                        analytics.get('detailed_feedback_count', 0),
-                        help="用户通过详细反馈表单提交的反馈数量"
-                    )
-                
-                with col3:
-                    st.metric(
-                        "总反馈数", 
-                        analytics.get('feedback_count', 0),
-                        help="今日收到的所有反馈总数"
-                    )
-                
-                # 显示一些反馈样本
-                feedback_samples = analytics.get('simple_feedback_samples', [])
-                if feedback_samples:
-                    st.markdown("**最近的用户建议：**")
-                    for i, feedback in enumerate(feedback_samples[:3], 1):
-                        st.markdown(f"{i}. {feedback}")
-                        
-    except Exception as e:
-        logger.error(f"Error rendering feedback summary: {e}")
-        st.error("无法加载反馈统计数据")
-
 def get_feedback_metrics() -> Dict[str, Any]:
     """
     获取当前session的反馈相关指标
@@ -230,81 +192,3 @@ def get_feedback_metrics() -> Dict[str, Any]:
             max(st.session_state.get('translation_count', 1), 1)
         )
     }
-
-# 测试函数
-def test_feedback_component():
-    """测试反馈组件功能"""
-    print("=== 测试反馈组件功能 ===")
-    
-    # 模拟session state
-    test_session = {
-        'permanent_user_id': 'test_user_123',
-        'user_session_id': 'session_456',
-        'translation_count': 2,
-        'language': 'simplified_chinese'
-    }
-    
-    # 测试数据构建
-    test_translation_id = "trans_test_789"
-    test_user_name = "测试用户"
-    test_feedback = "希望增加语音播放功能"
-    
-    print(f"测试翻译ID: {test_translation_id}")
-    print(f"测试用户名: {test_user_name}")
-    print(f"测试反馈: {test_feedback}")
-    
-    # 测试设备信息生成
-    device_info = "web_unknown"  # 模拟_get_device_info()的输出
-    ip_hash = hashlib.md5("session_456".encode()).hexdigest()[:8]
-    user_agent = "RadiAI.Care/4.2.0 (Streamlit Web App)"
-    
-    print(f"\n生成的元数据:")
-    print(f"设备信息: {device_info}")
-    print(f"IP哈希: {ip_hash}")
-    print(f"用户代理: {user_agent}")
-    
-    # 构建完整的反馈数据结构
-    feedback_data = {
-        'user_id': test_session['permanent_user_id'],
-        'session_id': test_session['user_session_id'],
-        'translation_id': test_translation_id,
-        'daily_count': test_session['translation_count'],
-        'session_count': 1,
-        'user_name': test_user_name,
-        'user_feedback': test_feedback,
-        'language': test_session['language'],
-        'device_info': device_info,
-        'ip_hash': ip_hash,
-        'user_agent': user_agent,
-        'extra_data': {
-            'feedback_type': 'simple_text',
-            'app_version': '4.2.0',
-            'submission_source': 'main_app',
-            'feedback_length': len(test_feedback),
-            'has_user_name': bool(test_user_name.strip())
-        }
-    }
-    
-    print(f"\n完整反馈数据结构:")
-    for key, value in feedback_data.items():
-        if key == 'extra_data':
-            print(f"  {key}:")
-            for sub_key, sub_value in value.items():
-                print(f"    {sub_key}: {sub_value}")
-        else:
-            print(f"  {key}: {value}")
-    
-    print("\n✅ 反馈组件测试完成")
-    return True
-
-if __name__ == "__main__":
-    test_feedback_component()稱呼（選填）"
-        name_example = "例：醫學生小王"
-        feedback_label = "請分享您的使用體驗或改進建議"
-        feedback_placeholder = "例：希望增加醫學術語發音功能，或翻譯速度可以更快一些..."
-        submit_button = "💌 送出建議"
-        success_message = "✅ 感謝您的寶貴建議！我們會持續優化 RadiAI.Care！"
-    else:  # 简体中文
-        title = "💭 帮助我们改进学习体验"
-        description = "您的建议将帮助我们优化这个医学翻译教育工具"
-        name_placeholder = "您的
