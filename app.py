@@ -88,32 +88,44 @@ else:
         color: #666;
         font-size: 0.7rem;
         margin: 2rem 0 1rem 0;
-        padding: 0.8rem;
-        border-top: 1px solid #e0e0e0;
-        background: rgba(0,0,0,0.01);
-        border-radius: 6px;
+        padding: 1rem 1.2rem;
+        background: linear-gradient(145deg, #f2fbff 0%, #e3f4fa 100%);
+        border-radius: 15px;
+        border: 1px solid #d4e8f2;
+        box-shadow: 0 2px 8px rgba(13,116,184,0.08);
     }
     .version-info {
         text-align: center;
-        color: #6c757d;
-        font-size: 0.8rem;
+        padding: 1rem 1.5rem;
         margin: 1.5rem 0 0.5rem 0;
-        padding: 0.6rem;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 10px;
-        border: 1px solid #dee2e6;
+        background: linear-gradient(145deg, #f4fcff 0%, #e5f4fb 100%);
+        border-radius: 15px;
+        border: 1px solid #d4e8f2;
+        box-shadow: 0 4px 12px rgba(13,116,184,0.06);
+    }
+    .version-title {
+        font-size: 0.85rem;
+        color: #0d74b8;
+        margin-bottom: 0.3rem;
+    }
+    .version-subtitle {
+        font-size: 0.7rem;
+        color: #4c7085;
+        line-height: 1.4;
     }
     .legal-text {
         font-size: 0.65rem;
         color: #777;
         line-height: 1.3;
-        margin-top: 0.4rem;
+        margin-top: 0.5rem;
     }
     .privacy-title {
-        font-size: 0.7rem;
-        color: #495057;
-        margin-bottom: 0.6rem;
-        opacity: 0.8;
+        font-size: 0.6rem;
+        color: #4c7085;
+        margin-bottom: 0.7rem;
+        opacity: 0.9;
+        font-weight: 500;
+        letter-spacing: 0.5px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -602,13 +614,13 @@ def render_footer():
     </div>
     """, unsafe_allow_html=True)
     
-    # 版本信息 - 放在最后
+    # 版本信息 - 与标题区域相似的设计
     st.markdown(f"""
     <div class="version-info">
-        <div style="color: #0d74b8;">
+        <div class="version-title">
             🏥 RadiAI.Care v4.2.0
         </div>
-        <div style="color: #6c757d; font-size: 0.75rem; margin-top: 0.2rem;">
+        <div class="version-subtitle">
             {lang_cfg['footer_app_name']} | {lang_cfg['footer_service_desc']}
         </div>
     </div>
