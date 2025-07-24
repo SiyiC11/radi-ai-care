@@ -1,5 +1,5 @@
 """
-RadiAI.Care - 完整的 Google Sheets 数据管理系统
+RadiAI.Care - 完整的 Google Sheets 数据管理系统（悉尼时间版）
 整合使用量追踪、反馈收集、数据分析的统一管理平台
 """
 
@@ -39,23 +39,23 @@ def _get_utc_time() -> datetime:
     return datetime.now(timezone.utc)
 
 class GoogleSheetsManager:
-    """Google Sheets 统一管理器"""
+    """Google Sheets 统一管理器（悉尼时间版）"""
     
-    # 工作表定义
+    # 工作表定义 - 更新时间戳列名
     WORKSHEETS_CONFIG = {
         'UsageLog': {
             'headers': [
-                'Timestamp (UTC)', 'Sydney Date', 'User ID', 'Session ID', 
+                'Timestamp (Sydney)', 'Sydney Date', 'User ID', 'Session ID', 
                 'Translation ID', 'Daily Count', 'Session Count', 
                 'Processing Time (ms)', 'File Type', 'Content Length',
                 'Status', 'Language', 'Device Info', 'IP Hash', 'User Agent',
                 'Error Message', 'AI Model', 'API Cost', 'Extra Data'
             ],
-            'description': '用户使用记录和系统性能数据'
+            'description': '用户使用记录和系统性能数据（悉尼时间）'
         },
         'Feedback': {
             'headers': [
-                'Timestamp (UTC)', 'Sydney Date', 'Translation ID', 'User ID',
+                'Timestamp (Sydney)', 'Sydney Date', 'Translation ID', 'User ID',
                 'Overall Satisfaction', 'Translation Quality', 'Speed Rating',
                 'Ease of Use', 'Feature Completeness', 'Likelihood to Recommend',
                 'Primary Use Case', 'User Type', 'Improvement Areas',
@@ -63,7 +63,7 @@ class GoogleSheetsManager:
                 'Contact Email', 'Follow-up Consent', 'Device Info', 'Language',
                 'Usage Frequency', 'Comparison Rating', 'Extra Metadata'
             ],
-            'description': '用户反馈和满意度调查数据'
+            'description': '用户反馈和满意度调查数据（悉尼时间）'
         },
         'Analytics': {
             'headers': [
@@ -153,6 +153,10 @@ class GoogleSheetsManager:
                 # 尝试获取现有工作表
                 worksheet = self.spreadsheet.worksheet(sheet_name)
                 logger.info(f"Found existing worksheet: {sheet_name}")
+                
+                # 检查并更新表头（如果需要）
+                self._update_headers_if_needed(worksheet, config['headers'], sheet_name)
+                
             except gspread.WorksheetNotFound:
                 # 创建新工作表
                 logger.info(f"Creating new worksheet: {sheet_name}")
@@ -173,27 +177,48 @@ class GoogleSheetsManager:
                 
                 logger.info(f"Created worksheet {sheet_name} with {len(config['headers'])} columns")
             
-            # 验证表头
-            existing_headers = worksheet.row_values(1)
-            expected_headers = config['headers']
-            
-            if existing_headers != expected_headers:
-                logger.warning(f"Headers mismatch in {sheet_name}, updating...")
-                worksheet.update('A1', [expected_headers])
-            
             self.worksheets[sheet_name] = worksheet
     
+    def _update_headers_if_needed(self, worksheet, expected_headers: List[str], sheet_name: str):
+        """检查并更新表头（如果需要从UTC改为Sydney时间）"""
+        try:
+            existing_headers = worksheet.row_values(1)
+            
+            # 检查是否需要更新时间戳列
+            needs_update = False
+            updated_headers = existing_headers.copy()
+            
+            if len(existing_headers) > 0:
+                # 检查第一列是否是UTC时间戳
+                if existing_headers[0] == 'Timestamp (UTC)':
+                    updated_headers[0] = 'Timestamp (Sydney)'
+                    needs_update = True
+                    logger.info(f"Updating {sheet_name} timestamp header from UTC to Sydney")
+            
+            # 如果表头不完整或不匹配，使用期望的表头
+            if len(existing_headers) != len(expected_headers):
+                updated_headers = expected_headers
+                needs_update = True
+                logger.info(f"Updating {sheet_name} headers to match expected format")
+            
+            if needs_update:
+                worksheet.update('A1', [updated_headers])
+                logger.info(f"Updated headers for {sheet_name}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to update headers for {sheet_name}: {e}")
+    
     def log_usage(self, usage_data: Dict[str, Any]) -> bool:
-        """记录使用数据"""
+        """记录使用数据（使用悉尼时间）"""
         try:
             worksheet = self.worksheets['UsageLog']
             
-            # 构建数据行
+            # 获取悉尼时间
             sydney_time = _get_sydney_time()
-            utc_time = _get_utc_time()
             
+            # 构建数据行 - 使用悉尼时间作为主时间戳
             row_data = [
-                utc_time.isoformat(),  # Timestamp (UTC)
+                sydney_time.isoformat(),  # Timestamp (Sydney) - 修改点1
                 sydney_time.strftime('%Y-%m-%d'),  # Sydney Date
                 usage_data.get('user_id', ''),
                 usage_data.get('session_id', ''),
@@ -216,7 +241,7 @@ class GoogleSheetsManager:
             
             # 插入数据
             worksheet.append_row(row_data, value_input_option='RAW')
-            logger.debug(f"Logged usage data for translation: {usage_data.get('translation_id')}")
+            logger.debug(f"Logged usage data for translation: {usage_data.get('translation_id')} at Sydney time: {sydney_time.isoformat()}")
             return True
             
         except Exception as e:
@@ -224,16 +249,16 @@ class GoogleSheetsManager:
             return False
     
     def log_feedback(self, feedback_data: Dict[str, Any]) -> bool:
-        """记录反馈数据"""
+        """记录反馈数据（使用悉尼时间）"""
         try:
             worksheet = self.worksheets['Feedback']
             
+            # 获取悉尼时间
             sydney_time = _get_sydney_time()
-            utc_time = _get_utc_time()
             
-            # 构建反馈数据行
+            # 构建反馈数据行 - 使用悉尼时间作为主时间戳
             row_data = [
-                utc_time.isoformat(),  # Timestamp (UTC)
+                sydney_time.isoformat(),  # Timestamp (Sydney) - 修改点2
                 sydney_time.strftime('%Y-%m-%d'),  # Sydney Date
                 feedback_data.get('translation_id', ''),
                 feedback_data.get('user_id', ''),
@@ -259,7 +284,7 @@ class GoogleSheetsManager:
             ]
             
             worksheet.append_row(row_data, value_input_option='RAW')
-            logger.info(f"Logged feedback for translation: {feedback_data.get('translation_id')}")
+            logger.info(f"Logged feedback for translation: {feedback_data.get('translation_id')} at Sydney time: {sydney_time.isoformat()}")
             return True
             
         except Exception as e:
@@ -369,7 +394,12 @@ class GoogleSheetsManager:
         result = {
             'connected': False,
             'worksheets': {},
-            'error': None
+            'error': None,
+            'timezone_info': {
+                'sydney_time': _get_sydney_time().isoformat(),
+                'utc_time': _get_utc_time().isoformat(),
+                'timezone': 'Australia/Sydney'
+            }
         }
         
         try:
@@ -384,7 +414,9 @@ class GoogleSheetsManager:
                     result['worksheets'][name] = {
                         'accessible': True,
                         'header_count': len(headers),
-                        'row_count': worksheet.row_count
+                        'row_count': worksheet.row_count,
+                        'first_header': headers[0] if headers else 'None',
+                        'uses_sydney_time': headers[0] == 'Timestamp (Sydney)' if headers else False
                     }
                 except Exception as e:
                     result['worksheets'][name] = {
@@ -393,10 +425,42 @@ class GoogleSheetsManager:
                     }
             
             result['connected'] = True
-            logger.info("Google Sheets connection test passed")
+            logger.info("Google Sheets connection test passed (Sydney timezone)")
             
         except Exception as e:
             result['error'] = str(e)
             logger.error(f"Google Sheets connection test failed: {e}")
         
         return result
+
+# 测试函数
+def test_sydney_time_functionality():
+    """测试悉尼时间功能"""
+    print("=== 测试悉尼时间功能 ===")
+    
+    # 测试时间获取函数
+    sydney_time = _get_sydney_time()
+    utc_time = _get_utc_time()
+    
+    print(f"悉尼时间: {sydney_time.isoformat()}")
+    print(f"UTC时间: {utc_time.isoformat()}")
+    print(f"时区信息: {sydney_time.tzinfo}")
+    
+    # 测试时间格式
+    print(f"悉尼日期: {sydney_time.strftime('%Y-%m-%d')}")
+    print(f"悉尼时间戳: {sydney_time.isoformat()}")
+    
+    # 测试工作表配置
+    config = GoogleSheetsManager.WORKSHEETS_CONFIG
+    for sheet_name, sheet_config in config.items():
+        headers = sheet_config['headers']
+        print(f"\n{sheet_name} 表头:")
+        print(f"  第一列: {headers[0]}")
+        print(f"  第二列: {headers[1]}")
+        print(f"  是否使用悉尼时间: {'是' if 'Sydney' in headers[0] else '否'}")
+    
+    return True
+
+if __name__ == "__main__":
+    # 运行测试
+    test_sydney_time_functionality()
