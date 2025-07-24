@@ -132,31 +132,21 @@ def get_language_config(language="简体中文"):
     """獲取語言配置"""
     if CONFIG_AVAILABLE:
         try:
-            return UIText.get_language_config(language)
+            config = UIText.get_language_config(language)
+            # 确保页脚配置存在
+            if 'footer_privacy_title' not in config:
+                config.update(get_footer_config(language))
+            return config
         except Exception as e:
             logger.warning(f"Failed to get language config: {e}")
     
-    # 備用語言配置
-    configs = {
-        "繁體中文": {
-            "code": "traditional_chinese",
-            "app_title": "RadiAI.Care",
-            "app_subtitle": "智能醫療報告翻譯助手",
-            "app_description": "為澳洲華人社群提供專業醫學報告翻譯服務",
-            "disclaimer_title": "重要醫療免責聲明",
-            "disclaimer_items": [
-                "本工具僅提供翻譯服務，不構成醫療建議",
-                "請諮詢專業醫師進行醫療決策",
-                "AI翻譯可能存在錯誤",
-                "緊急情況請撥打000"
-            ],
-            "input_placeholder": "請輸入英文放射科報告...",
-            "file_upload": "上傳文件",
-            "supported_formats": "支持PDF、TXT、DOCX格式",
-            "translate_button": "開始翻譯",
-            "error_empty_input": "請輸入內容",
-            "lang_selection": "選擇語言",
-            # 頁腳信息
+    # 完整的備用語言配置
+    return get_complete_language_config(language)
+
+def get_footer_config(language):
+    """获取页脚配置"""
+    if language == "繁體中文":
+        return {
             "footer_privacy_title": "隱私政策與使用條款",
             "footer_app_name": "智能醫療報告翻譯助手",
             "footer_service_desc": "為澳洲華人社群服務",
@@ -164,7 +154,21 @@ def get_language_config(language="简体中文"):
             "footer_terms_text": "本服務僅提供醫學報告翻譯和科普解釋，不構成任何醫療建議或診斷。用戶須為所有醫療決策自負責任，並應諮詢專業醫師意見。",
             "footer_disclaimer_text": "AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。緊急情況請撥打000或前往最近的急診室。",
             "footer_contact_text": "如有任何問題或建議，請聯繫 support@radiai.care | 本服務受澳洲法律管轄"
-        },
+        }
+    else:  # 简体中文
+        return {
+            "footer_privacy_title": "隐私政策与使用条款",
+            "footer_app_name": "智能医疗报告翻译助手",
+            "footer_service_desc": "为澳洲华人社区服务",
+            "footer_privacy_text": "我们仅收集翻译服务必要的信息，所有数据采用加密传输和存储，严格遵守澳洲隐私法（Privacy Act 1988）规定，绝不与第三方分享您的医疗信息。",
+            "footer_terms_text": "本服务仅提供医学报告翻译和科普解释，不构成任何医疗建议或诊断。用户须为所有医疗决策自负责任，并应咨询专业医师意见。",
+            "footer_disclaimer_text": "AI翻译可能存在错误，请与医师核实所有重要医疗信息。紧急情况请拨打000或前往最近的急诊室。",
+            "footer_contact_text": "如有任何问题或建议，请联系 support@radiai.care | 本服务受澳洲法律管辖"
+        }
+
+def get_complete_language_config(language):
+    """获取完整的语言配置"""
+    base_config = {
         "简体中文": {
             "code": "simplified_chinese",
             "app_title": "RadiAI.Care",
@@ -182,19 +186,33 @@ def get_language_config(language="简体中文"):
             "supported_formats": "支持PDF、TXT、DOCX格式",
             "translate_button": "开始翻译",
             "error_empty_input": "请输入内容",
-            "lang_selection": "选择语言",
-            # 页脚信息
-            "footer_privacy_title": "隐私政策与使用条款",
-            "footer_app_name": "智能医疗报告翻译助手",
-            "footer_service_desc": "为澳洲华人社区服务",
-            "footer_privacy_text": "我们仅收集翻译服务必要的信息，所有数据采用加密传输和存储，严格遵守澳洲隐私法（Privacy Act 1988）规定，绝不与第三方分享您的医疗信息。",
-            "footer_terms_text": "本服务仅提供医学报告翻译和科普解释，不构成任何医疗建议或诊断。用户须为所有医疗决策自负责任，并应咨询专业医师意见。",
-            "footer_disclaimer_text": "AI翻译可能存在错误，请与医师核实所有重要医疗信息。紧急情况请拨打000或前往最近的急诊室。",
-            "footer_contact_text": "如有任何问题或建议，请联系 support@radiai.care | 本服务受澳洲法律管辖"
+            "lang_selection": "选择语言"
+        },
+        "繁體中文": {
+            "code": "traditional_chinese",
+            "app_title": "RadiAI.Care",
+            "app_subtitle": "智能醫療報告翻譯助手",
+            "app_description": "為澳洲華人社群提供專業醫學報告翻譯服務",
+            "disclaimer_title": "重要醫療免責聲明",
+            "disclaimer_items": [
+                "本工具僅提供翻譯服務，不構成醫療建議",
+                "請諮詢專業醫師進行醫療決策",
+                "AI翻譯可能存在錯誤",
+                "緊急情況請撥打000"
+            ],
+            "input_placeholder": "請輸入英文放射科報告...",
+            "file_upload": "上傳文件",
+            "supported_formats": "支持PDF、TXT、DOCX格式",
+            "translate_button": "開始翻譯",
+            "error_empty_input": "請輸入內容",
+            "lang_selection": "選擇語言"
         }
     }
     
-    return configs.get(language, configs["简体中文"])
+    # 获取基础配置并添加页脚配置
+    config = base_config.get(language, base_config["简体中文"])
+    config.update(get_footer_config(language))
+    return config
 
 def initialize_session_state():
     """初始化會話狀態"""
