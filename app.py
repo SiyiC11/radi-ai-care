@@ -1,5 +1,5 @@
 """
-RadiAI.Care 完整主應用程序 - 修復版
+RadiAI.Care 完整主應用程序 - 用户版
 整合 Enhanced UI Components 和 Google Sheets 資料記錄
 """
 
@@ -83,6 +83,32 @@ else:
     <style>
     .stApp { font-family: 'Inter', sans-serif; }
     .main-title { color: #0d74b8; font-weight: bold; text-align: center; }
+    .footer-info {
+        text-align: center;
+        color: #666;
+        font-size: 0.8rem;
+        margin: 2rem 0 1rem 0;
+        padding: 1rem;
+        border-top: 1px solid #e0e0e0;
+        background: rgba(0,0,0,0.02);
+        border-radius: 8px;
+    }
+    .version-info {
+        text-align: center;
+        color: #888;
+        font-size: 0.85rem;
+        margin: 1.5rem 0;
+        padding: 0.8rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        border: 1px solid #dee2e6;
+    }
+    .legal-text {
+        font-size: 0.75rem;
+        color: #777;
+        line-height: 1.4;
+        margin-top: 0.5rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -177,14 +203,14 @@ def render_with_ui_components(component_method, *args, **kwargs):
     if ui_components and hasattr(ui_components, component_method):
         try:
             method = getattr(ui_components, component_method)
-            method(*args, **kwargs)  # 執行方法，不返回值
-            return True  # 成功執行，返回 True
+            method(*args, **kwargs)
+            return True
         except Exception as e:
             logger.error(f"UI component method {component_method} failed: {e}")
-            return False  # 執行失敗，返回 False
+            return False
     else:
         logger.warning(f"UI component method {component_method} not available, using fallback")
-        return False  # 組件不可用，返回 False
+        return False
 
 def render_header_fallback(lang_cfg):
     """備用標題渲染（無 logo）"""
@@ -244,10 +270,7 @@ def render_input_section(lang_cfg):
     input_success = render_with_ui_components('render_input_section', lang_cfg)
     
     if input_success:
-        # Enhanced UI Components 成功，需要從 session state 獲取結果
-        # 或者讓 Enhanced UI 組件自己處理整個輸入邏輯
         logger.info("Using Enhanced UI Components for input section")
-        # 返回默認值，因為 Enhanced UI 會自己處理
         return "", "enhanced_ui"
     
     # 備用實現
@@ -493,35 +516,37 @@ def render_quota_exceeded():
             if st.button("💳 立即升級", use_container_width=True):
                 st.info("訪問 radiai.care/upgrade")
 
-def render_debug_panel():
-    """渲染調試面板"""
-    if st.sidebar.checkbox("🔧 調試模式"):
-        st.sidebar.markdown("### 🔧 系統調試")
-        
-        # 顯示系統狀態
-        if st.sidebar.button("📊 系統狀態"):
-            debug_info = {
-                'translation_count': st.session_state.translation_count,
-                'daily_limit': st.session_state.daily_limit,
-                'language': st.session_state.language,
-                'session_id': st.session_state.user_session_id,
-                'user_id': st.session_state.permanent_user_id,
-                'modules_available': {
-                    'config': CONFIG_AVAILABLE,
-                    'translator': TRANSLATOR_AVAILABLE,
-                    'file_handler': FILE_HANDLER_AVAILABLE,
-                    'sheets_manager': st.session_state.get('sheets_manager') is not None,
-                    'ui_components': UI_COMPONENTS_AVAILABLE,
-                    'ui_instance': st.session_state.get('ui_components') is not None
-                }
-            }
-            st.sidebar.json(debug_info)
-        
-        # 重置配額
-        if st.sidebar.button("🔄 重置配額"):
-            st.session_state.translation_count = 0
-            st.sidebar.success("配額已重置")
-            st.rerun()
+def render_footer():
+    """渲染頁腳信息"""
+    # 版本信息
+    st.markdown("""
+    <div class="version-info">
+        <div style="font-weight: 600; color: #0d74b8; margin-bottom: 0.3rem;">
+            🏥 RadiAI.Care v4.2.0
+        </div>
+        <div style="color: #6c757d; font-size: 0.8rem;">
+            智能醫療報告翻譯助手 | 為澳洲華人社區服務
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # 隱私政策和使用條款
+    st.markdown("""
+    <div class="footer-info">
+        <div style="font-weight: 600; color: #495057; margin-bottom: 0.8rem;">
+            🔒 隱私政策與使用條款
+        </div>
+        <div class="legal-text">
+            <strong>隱私保護：</strong>我們僅收集翻譯服務必要的資訊，所有數據採用加密傳輸和儲存，嚴格遵守澳洲隱私法（Privacy Act 1988）規定，絕不與第三方分享您的醫療資訊。
+            <br><br>
+            <strong>服務條款：</strong>本服務僅提供醫學報告翻譯和科普解釋，不構成任何醫療建議或診斷。用戶須為所有醫療決策自負責任，並應諮詢專業醫師意見。
+            <br><br>
+            <strong>免責聲明：</strong>AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。緊急情況請撥打000或前往最近的急診室。
+            <br><br>
+            <strong>聯繫我們：</strong>如有任何問題或建議，請聯繫 support@radiai.care | 本服務受澳洲法律管轄
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def main():
     """主應用程序函數"""
@@ -565,7 +590,7 @@ def main():
         # 檢查配額
         if remaining <= 0:
             render_quota_exceeded()
-            render_debug_panel()
+            render_footer()
             return
         
         # 輸入區域
@@ -578,24 +603,8 @@ def main():
         else:
             st.warning(lang_cfg["error_empty_input"])
         
-        # 頁腳
-        st.markdown("---")
-        st.markdown(f"RadiAI.Care v{BasicConfig.APP_VERSION} - 智能醫療報告翻譯助手")
-        
-        # 顯示連接狀態
-        if st.session_state.get('sheets_manager'):
-            st.markdown("🟢 **資料記錄：** 已連接")
-        else:
-            st.markdown("🟡 **資料記錄：** 離線模式")
-        
-        # 顯示 UI 組件狀態
-        if st.session_state.get('ui_components'):
-            st.markdown("🟢 **UI 組件：** Enhanced UI 已啟用")
-        else:
-            st.markdown("🟡 **UI 組件：** 基礎模式")
-        
-        # 調試面板
-        render_debug_panel()
+        # 渲染頁腳
+        render_footer()
         
     except Exception as e:
         logger.error(f"應用程序運行錯誤: {e}")
