@@ -617,7 +617,7 @@ def render_footer():
         box-shadow: 0 2px 8px rgba(13,116,184,0.08);
     ">
         <div style="
-            font-size: 0.6rem;
+            font-size: 0.7rem;
             color: #4c7085;
             margin-bottom: 0.7rem;
             opacity: 0.9;
