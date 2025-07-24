@@ -9,6 +9,8 @@ import uuid
 import logging
 import hashlib
 from datetime import datetime
+from utils.comprehensive_sheets_manager import GoogleSheetsManager
+manager = GoogleSheetsManager()
 
 # 必須首先導入 streamlit
 import streamlit as st
@@ -509,7 +511,25 @@ def handle_translation(report_text, file_type, lang_cfg):
             st.success("✅ 翻譯完成")
             st.markdown("### 📄 翻譯結果")
             st.markdown(result["content"])
-            
+            # ✅ 這裡插入你的意見回饋表單
+            with st.expander("📝 留下你的使用建議或意見回饋", expanded=False):
+                with st.form("feedback_form"):
+                    user_name = st.text_input("你的名字（選填）")
+                    user_feedback = st.text_area("你對這個 AI 解釋工具有什麼建議、疑問或感受？")
+                    submitted = st.form_submit_button("送出回饋")
+                    if submitted:
+                        manager.write_feedback(
+                            name=user_name,
+                            feedback=user_feedback,
+                            device_type=st.session_state.get("device_type", "unknown"),
+                            language=st.session_state.get("language", "unknown"),
+                            result_model=st.session_state.get("result_model", "unknown"),
+                            raw_text=st.session_state.get("raw_text", ""),
+                            translated_text=result["content"],
+                            source="feedback_form"
+                        )
+                        st.success("✅ 感謝你的寶貴回饋，我們會持續優化 RadiAI.Care！")
+
             # 顯示剩餘次數
             remaining = st.session_state.daily_limit - st.session_state.translation_count
             if remaining > 0:
