@@ -353,65 +353,58 @@ def render_input_section(lang_cfg):
     
     if ui_components and hasattr(ui_components, 'render_input_section'):
         try:
-            # 调用 Enhanced UI Components
+            # 调用 Enhanced UI Components 渲染界面
             ui_components.render_input_section(lang_cfg)
             
-            # Enhanced UI Components 应该将结果存储在 session state 中
-            # 我们需要从 session state 获取用户输入的内容
+            # 现在我们需要从 Enhanced UI 或 session state 获取用户输入
+            # Enhanced UI Components 可能使用这些键存储内容：
             
-            # 检查是否有文本输入
-            text_input = ""
-            file_type = "none"
+            # 1. 检查是否有文本输入
+            for text_key in ['text_input_area', 'report_text', 'user_input']:
+                if text_key in st.session_state and st.session_state[text_key]:
+                    text_content = st.session_state[text_key]
+                    logger.info(f"Found text input in session state: {text_key} = {len(text_content)} chars")
+                    return text_content, "manual"
             
-            # 从不同可能的 session state 键获取文本内容
-            possible_text_keys = [
-                'text_input_area',  # Enhanced UI 可能使用的键
-                'report_text',      # 通用键
-                'input_text',       # 备用键
-                'enhanced_text_input'  # 另一个可能的键
-            ]
+            # 2. 检查是否有文件内容
+            for file_key in ['uploaded_file_content', 'file_content', 'extracted_text']:
+                if file_key in st.session_state and st.session_state[file_key]:
+                    file_content = st.session_state[file_key]
+                    file_type = st.session_state.get(f'{file_key}_type', 'application/pdf')
+                    logger.info(f"Found file content in session state: {file_key} = {len(file_content)} chars")
+                    return file_content, file_type
             
-            for key in possible_text_keys:
-                if key in st.session_state and st.session_state[key]:
-                    text_input = st.session_state[key]
-                    file_type = "manual"
-                    logger.info(f"Found text input in session state key: {key}")
-                    break
+            # 3. 如果都没找到，检查当前页面是否有可见的输入内容
+            # 这是最后的尝试 - 直接检查可能的 widget 状态
             
-            # 检查是否有文件上传的内容
-            possible_file_keys = [
-                'uploaded_file_content',  # Enhanced UI 存储文件内容的键
-                'file_content',          # 备用键
-                'extracted_text'         # 另一个可能的键
-            ]
+            # 检查所有可能的文本输入键
+            for key in st.session_state:
+                if 'input' in key.lower() and st.session_state[key]:
+                    value = st.session_state[key]
+                    if isinstance(value, str) and len(value) > 10:  # 假设有效输入至少10个字符
+                        logger.info(f"Found potential input in session key: {key} = {len(value)} chars")
+                        return value, "session_state"
             
-            for key in possible_file_keys:
-                if key in st.session_state and st.session_state[key]:
-                    text_input = st.session_state[key]
-                    file_type = st.session_state.get(f'{key}_type', 'application/pdf')
-                    logger.info(f"Found file content in session state key: {key}")
-                    break
+            # 如果Enhanced UI有get_current_input方法，尝试调用
+            if hasattr(ui_components, 'get_current_input'):
+                try:
+                    current_input = ui_components.get_current_input()
+                    if current_input:
+                        logger.info(f"Enhanced UI get_current_input returned: {type(current_input)}")
+                        if isinstance(current_input, tuple) and len(current_input) == 2:
+                            return current_input
+                        elif isinstance(current_input, str):
+                            return current_input, "enhanced_method"
+                except Exception as e:
+                    logger.warning(f"Enhanced UI get_current_input failed: {e}")
             
-            # 如果都没有找到，尝试直接从 Enhanced UI 的内部状态获取
-            if not text_input:
-                # 假设 Enhanced UI 有一个获取当前输入内容的方法
-                if hasattr(ui_components, 'get_current_input'):
-                    try:
-                        input_result = ui_components.get_current_input()
-                        if input_result and len(input_result) == 2:
-                            text_input, file_type = input_result
-                    except Exception as e:
-                        logger.warning(f"Enhanced UI get_current_input failed: {e}")
-            
-            logger.info(f"Enhanced UI result: text_length={len(text_input) if text_input else 0}, file_type={file_type}")
-            return text_input, file_type
+            # 如果什么都没找到，返回空但标记为enhanced_ui
+            logger.warning("Enhanced UI rendered but no content found in session state")
+            return "", "enhanced_ui_no_content"
             
         except Exception as e:
             logger.error(f"Enhanced UI Components failed: {e}")
             # 如果Enhanced UI失败，回退到备用实现
-            pass
-    else:
-        logger.info("Enhanced UI Components not available, using fallback")
     
     # 備用實現
     logger.info("Using fallback input section")
@@ -783,12 +776,19 @@ def main():
         # 輸入區域
         report_text, file_type = render_input_section(lang_cfg)
         
+        # 添加调试信息
+        logger.info(f"render_input_section returned: text_length={len(report_text) if report_text else 0}, file_type={file_type}")
+        
         # 翻譯按鈕
         if report_text and report_text.strip():
             if st.button(lang_cfg["translate_button"], type="primary", use_container_width=True):
                 handle_translation(report_text, file_type, lang_cfg)
         else:
-            st.warning(lang_cfg["error_empty_input"])
+            # 显示调试信息
+            if file_type in ["enhanced_ui", "processing"]:
+                st.info("📋 文件处理中，请稍等...")
+            else:
+                st.warning(lang_cfg["error_empty_input"])
         
         # 渲染頁腳
         render_footer()
