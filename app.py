@@ -120,14 +120,14 @@ else:
     }
     
     .legal-text {
-        font-size: 0.75rem;
+        font-size: 0.9rem;
         color: #777;
         line-height: 1.3;
         margin-top: 0.5rem;
     }
     
     .privacy-title {
-        font-size: 0.7rem;
+        font-size: 0.9rem;
         color: #4c7085;
         margin-bottom: 0.7rem;
         opacity: 0.9;
