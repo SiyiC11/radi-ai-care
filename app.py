@@ -88,7 +88,7 @@ else:
     .footer-info {
         text-align: center;
         color: #666;
-        font-size: 0.9rem;
+        font-size: 0.7rem;
         margin: 2rem 0 1rem 0;
         padding: 1rem 1.2rem;
         background: linear-gradient(145deg, #f2fbff 0%, #e3f4fa 100%);
@@ -120,14 +120,14 @@ else:
     }
     
     .legal-text {
-        font-size: 0.9rem;
+        font-size: 0.65rem;
         color: #777;
         line-height: 1.3;
         margin-top: 0.5rem;
     }
     
     .privacy-title {
-        font-size: 0.9rem;
+        font-size: 0.6rem;
         color: #4c7085;
         margin-bottom: 0.7rem;
         opacity: 0.9;
@@ -349,11 +349,69 @@ def render_usage_status():
 def render_input_section(lang_cfg):
     """渲染輸入區域"""
     # 嘗試使用 Enhanced UI Components
-    input_success = render_with_ui_components('render_input_section', lang_cfg)
+    ui_components = st.session_state.get('ui_components')
     
-    if input_success:
-        logger.info("Using Enhanced UI Components for input section")
-        return "", "enhanced_ui"
+    if ui_components and hasattr(ui_components, 'render_input_section'):
+        try:
+            # 调用 Enhanced UI Components
+            ui_components.render_input_section(lang_cfg)
+            
+            # Enhanced UI Components 应该将结果存储在 session state 中
+            # 我们需要从 session state 获取用户输入的内容
+            
+            # 检查是否有文本输入
+            text_input = ""
+            file_type = "none"
+            
+            # 从不同可能的 session state 键获取文本内容
+            possible_text_keys = [
+                'text_input_area',  # Enhanced UI 可能使用的键
+                'report_text',      # 通用键
+                'input_text',       # 备用键
+                'enhanced_text_input'  # 另一个可能的键
+            ]
+            
+            for key in possible_text_keys:
+                if key in st.session_state and st.session_state[key]:
+                    text_input = st.session_state[key]
+                    file_type = "manual"
+                    logger.info(f"Found text input in session state key: {key}")
+                    break
+            
+            # 检查是否有文件上传的内容
+            possible_file_keys = [
+                'uploaded_file_content',  # Enhanced UI 存储文件内容的键
+                'file_content',          # 备用键
+                'extracted_text'         # 另一个可能的键
+            ]
+            
+            for key in possible_file_keys:
+                if key in st.session_state and st.session_state[key]:
+                    text_input = st.session_state[key]
+                    file_type = st.session_state.get(f'{key}_type', 'application/pdf')
+                    logger.info(f"Found file content in session state key: {key}")
+                    break
+            
+            # 如果都没有找到，尝试直接从 Enhanced UI 的内部状态获取
+            if not text_input:
+                # 假设 Enhanced UI 有一个获取当前输入内容的方法
+                if hasattr(ui_components, 'get_current_input'):
+                    try:
+                        input_result = ui_components.get_current_input()
+                        if input_result and len(input_result) == 2:
+                            text_input, file_type = input_result
+                    except Exception as e:
+                        logger.warning(f"Enhanced UI get_current_input failed: {e}")
+            
+            logger.info(f"Enhanced UI result: text_length={len(text_input) if text_input else 0}, file_type={file_type}")
+            return text_input, file_type
+            
+        except Exception as e:
+            logger.error(f"Enhanced UI Components failed: {e}")
+            # 如果Enhanced UI失败，回退到备用实现
+            pass
+    else:
+        logger.info("Enhanced UI Components not available, using fallback")
     
     # 備用實現
     logger.info("Using fallback input section")
@@ -398,10 +456,16 @@ def render_input_section(lang_cfg):
                 report_text = ""
                 file_type = "error"
         else:
-            if not FILE_HANDLER_AVAILABLE:
+            if uploaded_file is None:
+                report_text = ""
+                file_type = "none"
+            elif not FILE_HANDLER_AVAILABLE:
                 st.error("❌ 文件處理功能不可用，請使用文字輸入")
-            report_text = ""
-            file_type = "none"
+                report_text = ""
+                file_type = "unavailable"
+            else:
+                report_text = ""
+                file_type = "processing"
     
     return report_text, file_type
 
