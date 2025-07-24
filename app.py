@@ -83,6 +83,8 @@ else:
     <style>
     .stApp { font-family: 'Inter', sans-serif; }
     .main-title { color: #0d74b8; font-weight: bold; text-align: center; }
+    
+    /* 页脚样式 */
     .footer-info {
         text-align: center;
         color: #666;
@@ -94,6 +96,7 @@ else:
         border: 1px solid #d4e8f2;
         box-shadow: 0 2px 8px rgba(13,116,184,0.08);
     }
+    
     .version-info {
         text-align: center;
         padding: 1rem 1.5rem;
@@ -103,22 +106,26 @@ else:
         border: 1px solid #d4e8f2;
         box-shadow: 0 4px 12px rgba(13,116,184,0.06);
     }
+    
     .version-title {
         font-size: 0.85rem;
         color: #0d74b8;
         margin-bottom: 0.3rem;
     }
+    
     .version-subtitle {
         font-size: 0.7rem;
         color: #4c7085;
         line-height: 1.4;
     }
+    
     .legal-text {
         font-size: 0.65rem;
         color: #777;
         line-height: 1.3;
         margin-top: 0.5rem;
     }
+    
     .privacy-title {
         font-size: 0.6rem;
         color: #4c7085;
