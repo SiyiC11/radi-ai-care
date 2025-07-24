@@ -603,13 +603,35 @@ def render_footer():
     # 获取当前语言配置
     lang_cfg = get_language_config(st.session_state.language)
     
-    # 隱私政策和使用條款
+    # 隱私政策和使用條款 - 使用内联样式确保生效
     st.markdown(f"""
-    <div class="footer-info">
-        <div class="privacy-title">
+    <div style="
+        text-align: center;
+        color: #666;
+        font-size: 0.7rem;
+        margin: 2rem 0 1rem 0;
+        padding: 1rem 1.2rem;
+        background: linear-gradient(145deg, #f2fbff 0%, #e3f4fa 100%);
+        border-radius: 15px;
+        border: 1px solid #d4e8f2;
+        box-shadow: 0 2px 8px rgba(13,116,184,0.08);
+    ">
+        <div style="
+            font-size: 0.6rem;
+            color: #4c7085;
+            margin-bottom: 0.7rem;
+            opacity: 0.9;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        ">
             🔒 {lang_cfg['footer_privacy_title']}
         </div>
-        <div class="legal-text">
+        <div style="
+            font-size: 0.65rem;
+            color: #777;
+            line-height: 1.3;
+            margin-top: 0.5rem;
+        ">
             <strong>{"隱私保護" if st.session_state.language == "繁體中文" else "隐私保护"}：</strong>{lang_cfg['footer_privacy_text']}
             <br><br>
             <strong>{"服務條款" if st.session_state.language == "繁體中文" else "服务条款"}：</strong>{lang_cfg['footer_terms_text']}
@@ -621,13 +643,29 @@ def render_footer():
     </div>
     """, unsafe_allow_html=True)
     
-    # 版本信息 - 与标题区域相似的设计
+    # 版本信息 - 使用内联样式，与标题区域相似的设计
     st.markdown(f"""
-    <div class="version-info">
-        <div class="version-title">
+    <div style="
+        text-align: center;
+        padding: 1rem 1.5rem;
+        margin: 1.5rem 0 0.5rem 0;
+        background: linear-gradient(145deg, #f4fcff 0%, #e5f4fb 100%);
+        border-radius: 15px;
+        border: 1px solid #d4e8f2;
+        box-shadow: 0 4px 12px rgba(13,116,184,0.06);
+    ">
+        <div style="
+            font-size: 0.85rem;
+            color: #0d74b8;
+            margin-bottom: 0.3rem;
+        ">
             🏥 RadiAI.Care v4.2.0
         </div>
-        <div class="version-subtitle">
+        <div style="
+            font-size: 0.7rem;
+            color: #4c7085;
+            line-height: 1.4;
+        ">
             {lang_cfg['footer_app_name']} | {lang_cfg['footer_service_desc']}
         </div>
     </div>
