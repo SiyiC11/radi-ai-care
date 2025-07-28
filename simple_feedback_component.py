@@ -13,21 +13,13 @@ logger = logging.getLogger(__name__)
 def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: Dict[str, str]) -> bool:
     """
     渲染簡單的用戶反饋表單，記錄到新的Feedback工作表
-    ⚠️ 完全不使用st.form，避免页面刷新问题
     """
-    
-    # 添加调试：确认函数被调用
-    logger.info(f"🔍 DEBUG: render_simple_feedback_form被调用，translation_id={translation_id}")
     
     # 檢查是否已經提交過反饋
     feedback_key = f"feedback_submitted_{translation_id}"
     if st.session_state.get(feedback_key, False):
         st.info("✅ 感謝您已經提交的寶貴建議！")
-        logger.info(f"🔍 DEBUG: 用户已经提交过反馈 {translation_id}")
         return True
-    
-    # 添加调试：确认将要显示反馈表单
-    logger.info(f"🔍 DEBUG: 准备显示反馈表单")
     
     # 根據語言選擇標題和說明文字
     if lang_cfg.get('code') == 'traditional_chinese':
@@ -49,24 +41,18 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
         submit_button = "💌 送出建议"
         success_message = "✅ 感谢您的宝贵建议！我们会持续优化 RadiAI.Care！"
     
-    # 显示调试信息：表单即将渲染
-    st.write(f"🔍 DEBUG: 反馈表单渲染中... translation_id={translation_id}")
-    
     with st.expander(title, expanded=False):
         st.markdown(f"*{description}*")
         
-        # 显示调试信息
-        st.write(f"🔍 DEBUG: 在expander内部，sheets_manager存在: {sheets_manager is not None}")
-        
-        # ========== 完全不使用st.form ==========
-        # 用户姓名输入 - 直接使用st.text_input
+        # 完全不使用st.form
+        # 用户姓名输入
         user_name = st.text_input(
             name_placeholder,
             placeholder=name_example,
             key=f"feedback_name_{translation_id}"
         )
         
-        # 用户反馈输入 - 直接使用st.text_area
+        # 用户反馈输入
         user_feedback = st.text_area(
             feedback_label,
             placeholder=feedback_placeholder,
@@ -74,38 +60,22 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
             key=f"feedback_text_{translation_id}"
         )
         
-        # 提交按钮 - 使用普通的st.button (不是st.form_submit_button)
+        # 提交按钮
         submitted = st.button(
             submit_button, 
             use_container_width=True,
             key=f"feedback_submit_{translation_id}"
         )
         
-        # 显示调试信息
-        st.write(f"🔍 DEBUG: 按钮状态 - submitted={submitted}")
-        
         # 处理按钮点击事件
         if submitted:
-            # 添加调试信息
-            logger.info(f"🔍 DEBUG: 按钮已点击，translation_id={translation_id}")
-            st.write("🔍 DEBUG: 按钮已点击")
-            st.write(f"🔍 DEBUG: 反馈内容长度: {len(user_feedback.strip()) if user_feedback else 0}")
-            
             if user_feedback.strip():  # 确保反馈内容不为空
-                st.write("🔍 DEBUG: 开始调用反馈保存函数")
-                st.write(f"🔍 DEBUG: sheets_manager存在: {sheets_manager is not None}")
-                
-                logger.info(f"🔍 DEBUG: 准备调用_save_feedback_to_new_sheet")
-                
                 success = _save_feedback_to_new_sheet(
                     translation_id=translation_id,
                     user_name=user_name.strip(),
                     user_feedback=user_feedback.strip(),
                     sheets_manager=sheets_manager
                 )
-                
-                st.write(f"🔍 DEBUG: 反馈保存结果: {success}")
-                logger.info(f"🔍 DEBUG: 反馈保存结果: {success}")
                 
                 if success:
                     st.success(success_message)
@@ -116,21 +86,13 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
                     if 'feedback_count' not in st.session_state:
                         st.session_state.feedback_count = 0
                     st.session_state.feedback_count += 1
-                    # ⚠️ 绝对不调用st.rerun()或任何刷新函数
-                    logger.info(f"🔍 DEBUG: 反馈提交成功，不刷新页面")
                     return True
                 else:
                     st.error("❌ 反馈提交失败，请稍后重试")
-                    st.write("🔍 DEBUG: 反馈保存失败，请检查日志")
                     return False
             else:
                 st.warning("⚠️ 请填写您的建议后再提交")
-                st.write("🔍 DEBUG: 反馈内容为空")
-                logger.info(f"🔍 DEBUG: 反馈内容为空")
                 return False
-        else:
-            # 按钮未点击时也显示调试信息
-            st.write("🔍 DEBUG: 等待用户点击提交按钮...")
     
     return False
 
@@ -140,34 +102,14 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
     保存反馈到新的Feedback工作表
     """
     try:
-        # 添加进入函数的调试信息
-        logger.info("🔍 DEBUG: 进入_save_feedback_to_new_sheet函数")
-        logger.info(f"🔍 DEBUG: translation_id={translation_id}")
-        logger.info(f"🔍 DEBUG: user_name={user_name}")
-        logger.info(f"🔍 DEBUG: user_feedback长度={len(user_feedback)}")
-        logger.info(f"🔍 DEBUG: sheets_manager类型={type(sheets_manager)}")
-        
-        # 在Streamlit界面也显示调试信息
-        st.write("🔍 DEBUG: 进入反馈保存函数")
-        st.write(f"🔍 DEBUG: sheets_manager类型: {type(sheets_manager)}")
-        
-        if sheets_manager is None:
-            logger.error("🔍 DEBUG: sheets_manager为None!")
-            st.error("🔍 DEBUG: sheets_manager为None!")
-            return False
-        
         logger.info("开始保存反馈到Feedback工作表")
         
-        # 先检查sheets_manager的属性
-        available_attrs = [attr for attr in dir(sheets_manager) if not attr.startswith('_')]
-        logger.info(f"sheets_manager可用属性: {available_attrs}")
-        st.write(f"🔍 DEBUG: sheets_manager可用方法: {available_attrs}")
+        if sheets_manager is None:
+            logger.error("sheets_manager为None!")
+            return False
         
         # 尝试最简单的方法：直接使用sheets_manager的现有方法
         if hasattr(sheets_manager, 'log_usage'):
-            logger.info("🔍 DEBUG: 找到log_usage方法，尝试使用")
-            st.write("🔍 DEBUG: 找到log_usage方法，尝试使用")
-            
             # 构建反馈数据，使用与UsageLog相同的格式
             current_time = datetime.now()
             feedback_data = {
@@ -196,37 +138,25 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
                 'user_feedback': user_feedback
             }
             
-            st.write("🔍 DEBUG: 准备调用log_usage")
-            logger.info("🔍 DEBUG: 准备调用log_usage")
-            
             # 尝试记录到主表
             success = sheets_manager.log_usage(feedback_data)
-            
-            st.write(f"🔍 DEBUG: log_usage返回结果: {success}")
-            logger.info(f"🔍 DEBUG: log_usage返回结果: {success}")
             
             if success:
                 logger.info(f"成功使用log_usage保存反馈: {translation_id}")
                 return True
             else:
                 logger.error("log_usage方法返回失败")
-                st.write("🔍 DEBUG: log_usage返回失败，尝试其他方法")
         else:
-            logger.info("🔍 DEBUG: 没有找到log_usage方法")
-            st.write("🔍 DEBUG: 没有找到log_usage方法")
+            logger.info("没有找到log_usage方法")
         
         # 如果上面的方法失败，尝试其他方法
         logger.info("尝试其他方法...")
-        st.write("🔍 DEBUG: 尝试创建新工作表的方法")
         
         # 获取或创建Feedback工作表
         fb_worksheet = _get_or_create_fb_worksheet(sheets_manager)
         if not fb_worksheet:
             logger.error("无法获取或创建Feedback工作表")
-            st.write("🔍 DEBUG: 无法获取或创建Feedback工作表")
             return False
-        
-        st.write("🔍 DEBUG: 成功获取Feedback工作表，准备添加行")
         
         # 准备反馈数据
         current_time = datetime.now()
@@ -243,7 +173,6 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
         
         # 添加反馈到工作表
         fb_worksheet.append_row(feedback_row)
-        st.write("🔍 DEBUG: 成功添加行到Feedback工作表")
         
         logger.info(f"成功保存反馈到Feedback工作表: {translation_id}")
         return True
@@ -253,8 +182,6 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
         import traceback
         error_details = traceback.format_exc()
         logger.error(f"详细错误信息: {error_details}")
-        st.error(f"🔍 DEBUG: 发生错误: {str(e)}")
-        st.code(error_details)
         return False
 
 
