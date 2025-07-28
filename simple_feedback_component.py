@@ -1,6 +1,6 @@
 """
 RadiAI.Care - 簡單反饋組件
-直接更新Google Sheet最新記錄的反饋字段
+創建新的FB工作表專門記錄用戶反饋
 """
 
 import streamlit as st
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: Dict[str, str]) -> bool:
     """
-    渲染簡單的用戶反饋表單，直接更新最新記錄
+    渲染簡單的用戶反饋表單，記錄到新的FB工作表
     
     Args:
         translation_id: 翻譯ID
@@ -73,7 +73,8 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
             
             if submitted:
                 if user_feedback.strip():  # 确保反馈内容不为空
-                    success = _update_latest_record_with_feedback(
+                    success = _save_feedback_to_new_sheet(
+                        translation_id=translation_id,
                         user_name=user_name.strip(),
                         user_feedback=user_feedback.strip(),
                         sheets_manager=sheets_manager
@@ -101,96 +102,157 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
     return False
 
 
-def _update_latest_record_with_feedback(user_name: str, user_feedback: str, sheets_manager) -> bool:
+def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedback: str, sheets_manager) -> bool:
     """
-    直接更新Google Sheet最新记录的反馈字段
+    保存反馈到新的FB工作表
     
     Args:
+        translation_id: 翻译ID
         user_name: 用户姓名
         user_feedback: 用户反馈内容
         sheets_manager: Google Sheets 管理器实例
         
     Returns:
-        bool: 是否成功更新
+        bool: 是否成功保存
     """
     try:
-        logger.info("开始更新最新记录的反馈信息")
+        logger.info("开始保存反馈到FB工作表")
         
-        # 方法1: 如果sheets_manager有update_latest_record方法
-        if hasattr(sheets_manager, 'update_latest_record'):
-            feedback_data = {
-                'user_name': user_name,
-                'user_feedback': user_feedback
-            }
-            success = sheets_manager.update_latest_record(feedback_data)
-            if success:
-                logger.info("使用update_latest_record方法成功更新反馈")
-                return True
+        # 获取或创建FB工作表
+        fb_worksheet = _get_or_create_fb_worksheet(sheets_manager)
+        if not fb_worksheet:
+            logger.error("无法获取或创建FB工作表")
+            return False
         
-        # 方法2: 如果sheets_manager有worksheet属性，直接操作
-        if hasattr(sheets_manager, 'worksheet') or hasattr(sheets_manager, 'usage_sheet'):
-            try:
-                # 获取工作表
-                worksheet = getattr(sheets_manager, 'worksheet', None) or getattr(sheets_manager, 'usage_sheet', None)
-                if worksheet:
-                    # 获取所有记录，找到最新的一行
-                    all_records = worksheet.get_all_records()
-                    if all_records:
-                        # 最新记录是最后一行
-                        last_row_index = len(all_records) + 1  # +1因为有表头
-                        
-                        # T列 = User Name, U列 = User Feedback
-                        worksheet.update(f'T{last_row_index}', user_name)  # 用户姓名列 (T列)
-                        worksheet.update(f'U{last_row_index}', user_feedback)  # 反馈内容列 (U列)
-                        
-                        logger.info(f"直接更新第{last_row_index}行的反馈信息成功")
-                        return True
-            except Exception as e:
-                logger.error(f"直接操作工作表失败: {e}")
+        # 准备反馈数据
+        current_time = datetime.now()
+        feedback_row = [
+            current_time.strftime('%Y-%m-%d'),  # A列: 日期
+            current_time.strftime('%H:%M:%S'),  # B列: 时间
+            translation_id,                     # C列: 翻译ID
+            user_name if user_name else "匿名用户",  # D列: 用户姓名
+            user_feedback,                      # E列: 反馈内容
+            st.session_state.get('language', 'zh_CN'),  # F列: 语言
+            st.session_state.get('permanent_user_id', ''),  # G列: 用户ID
+            current_time.isoformat()            # H列: 完整时间戳
+        ]
         
-        # 方法3: 使用通用的update方法
-        if hasattr(sheets_manager, 'update_feedback'):
-            success = sheets_manager.update_feedback(user_name, user_feedback)
-            if success:
-                logger.info("使用update_feedback方法成功更新反馈")
-                return True
+        # 添加反馈到工作表
+        fb_worksheet.append_row(feedback_row)
         
-        # 方法4: 如果有service属性，直接使用Google Sheets API
-        if hasattr(sheets_manager, 'service') and hasattr(sheets_manager, 'spreadsheet_id'):
-            try:
-                # 获取表格数据以确定最后一行
-                range_name = 'UsageLog!A:A'  # 假设工作表名为UsageLog
-                result = sheets_manager.service.spreadsheets().values().get(
-                    spreadsheetId=sheets_manager.spreadsheet_id,
-                    range=range_name
-                ).execute()
-                
-                values = result.get('values', [])
-                last_row = len(values)  # 最后一行号
-                
-                # 更新反馈字段（T列是用户名，U列是反馈）
-                feedback_range = f'UsageLog!T{last_row}:U{last_row}'
-                feedback_values = [[user_name, user_feedback]]
-                
-                sheets_manager.service.spreadsheets().values().update(
-                    spreadsheetId=sheets_manager.spreadsheet_id,
-                    range=feedback_range,
-                    valueInputOption='RAW',
-                    body={'values': feedback_values}
-                ).execute()
-                
-                logger.info(f"使用API直接更新第{last_row}行反馈成功")
-                return True
-                
-            except Exception as e:
-                logger.error(f"使用API更新反馈失败: {e}")
-        
-        logger.error("所有更新方法都失败了")
-        return False
+        logger.info(f"成功保存反馈到FB工作表: {translation_id}")
+        return True
         
     except Exception as e:
-        logger.error(f"更新反馈时发生错误: {e}")
+        logger.error(f"保存反馈到FB工作表时发生错误: {e}")
         return False
+
+
+def _get_or_create_fb_worksheet(sheets_manager):
+    """
+    获取或创建FB工作表
+    
+    Args:
+        sheets_manager: Google Sheets 管理器实例
+        
+    Returns:
+        工作表对象或None
+    """
+    try:
+        # 方法1: 如果sheets_manager有spreadsheet属性
+        if hasattr(sheets_manager, 'spreadsheet'):
+            spreadsheet = sheets_manager.spreadsheet
+            
+            # 检查是否已经存在FB工作表
+            try:
+                fb_worksheet = spreadsheet.worksheet('FB')
+                logger.info("找到现有的FB工作表")
+                return fb_worksheet
+            except:
+                # FB工作表不存在，创建新的
+                logger.info("FB工作表不存在，正在创建...")
+                fb_worksheet = spreadsheet.add_worksheet(title='FB', rows=1000, cols=10)
+                
+                # 设置表头
+                headers = [
+                    '日期',         # A列
+                    '时间',         # B列  
+                    '翻译ID',       # C列
+                    '用户姓名',     # D列
+                    '反馈内容',     # E列
+                    '语言',         # F列
+                    '用户ID',       # G列
+                    '时间戳'        # H列
+                ]
+                fb_worksheet.append_row(headers)
+                
+                logger.info("成功创建FB工作表并设置表头")
+                return fb_worksheet
+        
+        # 方法2: 如果sheets_manager有service和spreadsheet_id属性
+        elif hasattr(sheets_manager, 'service') and hasattr(sheets_manager, 'spreadsheet_id'):
+            service = sheets_manager.service
+            spreadsheet_id = sheets_manager.spreadsheet_id
+            
+            # 获取所有工作表
+            spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheet_names = [sheet['properties']['title'] for sheet in spreadsheet['sheets']]
+            
+            if 'FB' in sheet_names:
+                # FB工作表已存在
+                logger.info("找到现有的FB工作表")
+                # 返回工作表引用（需要用gspread重新获取）
+                import gspread
+                gc = gspread.service_account()
+                spreadsheet = gc.open_by_key(spreadsheet_id)
+                return spreadsheet.worksheet('FB')
+            else:
+                # 创建新的FB工作表
+                logger.info("正在创建FB工作表...")
+                batch_update_body = {
+                    'requests': [{
+                        'addSheet': {
+                            'properties': {
+                                'title': 'FB',
+                                'gridProperties': {
+                                    'rowCount': 1000,
+                                    'columnCount': 10
+                                }
+                            }
+                        }
+                    }]
+                }
+                
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body=batch_update_body
+                ).execute()
+                
+                # 添加表头
+                headers = [['日期', '时间', '翻译ID', '用户姓名', '反馈内容', '语言', '用户ID', '时间戳']]
+                service.spreadsheets().values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range='FB!A1:H1',
+                    valueInputOption='RAW',
+                    body={'values': headers}
+                ).execute()
+                
+                logger.info("成功创建FB工作表")
+                
+                # 返回工作表引用
+                import gspread
+                gc = gspread.service_account()
+                spreadsheet = gc.open_by_key(spreadsheet_id)
+                return spreadsheet.worksheet('FB')
+        
+        # 方法3: 尝试通过其他属性访问
+        else:
+            logger.error("无法识别sheets_manager的类型")
+            return None
+            
+    except Exception as e:
+        logger.error(f"获取或创建FB工作表时发生错误: {e}")
+        return None
 
 
 def get_feedback_metrics() -> Dict[str, Any]:
