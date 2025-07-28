@@ -582,11 +582,7 @@ def render_translation_result():
 
 def render_simple_feedback_section(translation_id, lang_cfg):
     """渲染简单反馈区域"""
-    logger.info(f"🔍 DEBUG: render_simple_feedback_section被调用，translation_id={translation_id}")
-    
     if FEEDBACK_COMPONENT_AVAILABLE and st.session_state.get('sheets_manager'):
-        logger.info(f"🔍 DEBUG: 条件满足，准备调用render_simple_feedback_form")
-        
         try:
             # 使用反馈组件
             result = render_simple_feedback_form(
@@ -594,24 +590,16 @@ def render_simple_feedback_section(translation_id, lang_cfg):
                 sheets_manager=st.session_state.sheets_manager,
                 lang_cfg=lang_cfg
             )
-            logger.info(f"🔍 DEBUG: render_simple_feedback_form返回结果: {result}")
-            
         except Exception as e:
             logger.error(f"反馈组件渲染失败: {e}")
             # 回退到简单的反馈收集
             render_fallback_feedback(translation_id, lang_cfg)
     else:
-        logger.warning(f"🔍 DEBUG: 反馈组件条件不满足")
-        logger.warning(f"🔍 DEBUG: FEEDBACK_COMPONENT_AVAILABLE={FEEDBACK_COMPONENT_AVAILABLE}")
-        logger.warning(f"🔍 DEBUG: sheets_manager存在={st.session_state.get('sheets_manager') is not None}")
-        
         # 如果反馈组件不可用，使用简单的反馈收集
         render_fallback_feedback(translation_id, lang_cfg)
 
 def render_fallback_feedback(translation_id, lang_cfg):
     """备用反馈收集"""
-    logger.info(f"🔍 DEBUG: render_fallback_feedback被调用")
-    
     feedback_key = f"feedback_submitted_{translation_id}"
     if not st.session_state.get(feedback_key, False):
         with st.expander("💬 快速反馈", expanded=False):
@@ -838,22 +826,31 @@ def main():
         # ========== 显示保存的翻译结果（在输入之前） ==========
         render_translation_result()
         
-        # 输入区域
-        report_text, file_type = render_input_section(lang_cfg)
-        
-        # 添加调试信息
-        logger.info(f"render_input_section returned: text_length={len(report_text) if report_text else 0}, file_type={file_type}")
-        
-        # 翻译按钮
-        if report_text and report_text.strip():
-            if st.button(lang_cfg["translate_button"], type="primary", use_container_width=True):
-                handle_translation(report_text, file_type, lang_cfg)
-        else:
-            # 显示调试信息
-            if file_type in ["enhanced_ui", "processing"]:
-                st.info("📋 文件处理中，请稍等...")
+        # 只有在没有翻译结果时才显示输入区域
+        if not (st.session_state.get('show_translation_result') and st.session_state.get('current_translation')):
+            # 输入区域
+            report_text, file_type = render_input_section(lang_cfg)
+            
+            # 添加调试信息
+            logger.info(f"render_input_section returned: text_length={len(report_text) if report_text else 0}, file_type={file_type}")
+            
+            # 翻译按钮
+            if report_text and report_text.strip():
+                if st.button(lang_cfg["translate_button"], type="primary", use_container_width=True):
+                    handle_translation(report_text, file_type, lang_cfg)
             else:
-                st.warning(lang_cfg["error_empty_input"])
+                # 显示调试信息
+                if file_type in ["enhanced_ui", "processing"]:
+                    st.info("📋 文件处理中，请稍等...")
+                else:
+                    st.warning(lang_cfg["error_empty_input"])
+        else:
+            # 如果有翻译结果，显示"开始新翻译"按钮
+            if st.button("🔄 开始新翻译", type="secondary", use_container_width=True):
+                # 清除翻译结果，重新显示输入区域
+                st.session_state['show_translation_result'] = False
+                st.session_state['current_translation'] = None
+                st.rerun()
         
         # 渲染页脚
         render_footer()
