@@ -98,8 +98,8 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
                         if 'feedback_count' not in st.session_state:
                             st.session_state.feedback_count = 0
                         st.session_state.feedback_count += 1
-                        # 刷新页面显示感谢信息
-                        st.rerun()
+                        # 不要刷新页面！让用户看到成功信息
+                        logger.info(f"🔍 DEBUG: 反馈提交成功，不刷新页面")
                         return True
                     else:
                         st.error("❌ 反馈提交失败，请稍后重试")
