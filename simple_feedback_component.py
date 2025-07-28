@@ -1,22 +1,21 @@
 """
 RadiAI.Care - 簡單反饋組件
-用於收集用戶的文字反饋並存儲到 UsageLog 表中
+直接更新Google Sheet最新記錄的反饋字段
 """
 
 import streamlit as st
 import logging
-import hashlib
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: Dict[str, str]) -> bool:
     """
-    渲染簡單的用戶反饋表單
+    渲染簡單的用戶反饋表單，直接更新最新記錄
     
     Args:
-        translation_id: 翻譯ID，用於關聯反饋
+        translation_id: 翻譯ID
         sheets_manager: Google Sheets 管理器實例
         lang_cfg: 語言配置字典
         
@@ -74,8 +73,7 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
             
             if submitted:
                 if user_feedback.strip():  # 确保反馈内容不为空
-                    success = _submit_feedback_to_sheets(
-                        translation_id=translation_id,
+                    success = _update_latest_record_with_feedback(
                         user_name=user_name.strip(),
                         user_feedback=user_feedback.strip(),
                         sheets_manager=sheets_manager
@@ -86,7 +84,11 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
                         st.balloons()
                         # 标记已提交反馈
                         st.session_state[feedback_key] = True
-                        # 稍后刷新页面以显示感谢信息
+                        # 更新反馈统计
+                        if 'feedback_count' not in st.session_state:
+                            st.session_state.feedback_count = 0
+                        st.session_state.feedback_count += 1
+                        # 刷新页面显示感谢信息
                         st.rerun()
                         return True
                     else:
@@ -98,80 +100,98 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
     
     return False
 
-def _submit_feedback_to_sheets(translation_id: str, user_name: str, user_feedback: str, sheets_manager) -> bool:
+
+def _update_latest_record_with_feedback(user_name: str, user_feedback: str, sheets_manager) -> bool:
     """
-    提交反馈到 Google Sheets
+    直接更新Google Sheet最新记录的反馈字段
     
     Args:
-        translation_id: 翻译ID
         user_name: 用户姓名
         user_feedback: 用户反馈内容
         sheets_manager: Google Sheets 管理器实例
         
     Returns:
-        bool: 是否成功提交
+        bool: 是否成功更新
     """
     try:
-        # 构建反馈数据
-        feedback_data = {
-            'user_id': st.session_state.get('permanent_user_id', ''),
-            'session_id': st.session_state.get('user_session_id', ''),
-            'translation_id': translation_id,
-            'daily_count': st.session_state.get('translation_count', 0),
-            'session_count': len(st.session_state.get('session_translations', [])),
-            'user_name': user_name,
-            'user_feedback': user_feedback,
-            'language': st.session_state.get('language', 'zh_CN'),
-            'device_info': _get_device_info(),
-            'ip_hash': _get_ip_hash(),
-            'user_agent': _get_user_agent(),
-            'extra_data': {
-                'feedback_type': 'simple_text',
-                'app_version': '4.2.0',
-                'submission_source': 'main_app',
-                'feedback_length': len(user_feedback),
-                'has_user_name': bool(user_name.strip())
+        logger.info("开始更新最新记录的反馈信息")
+        
+        # 方法1: 如果sheets_manager有update_latest_record方法
+        if hasattr(sheets_manager, 'update_latest_record'):
+            feedback_data = {
+                'user_name': user_name,
+                'user_feedback': user_feedback
             }
-        }
+            success = sheets_manager.update_latest_record(feedback_data)
+            if success:
+                logger.info("使用update_latest_record方法成功更新反馈")
+                return True
         
-        # 使用专门的反馈记录方法
-        success = sheets_manager.log_feedback_to_usage(feedback_data)
+        # 方法2: 如果sheets_manager有worksheet属性，直接操作
+        if hasattr(sheets_manager, 'worksheet') or hasattr(sheets_manager, 'usage_sheet'):
+            try:
+                # 获取工作表
+                worksheet = getattr(sheets_manager, 'worksheet', None) or getattr(sheets_manager, 'usage_sheet', None)
+                if worksheet:
+                    # 获取所有记录，找到最新的一行
+                    all_records = worksheet.get_all_records()
+                    if all_records:
+                        # 最新记录是最后一行
+                        last_row_index = len(all_records) + 1  # +1因为有表头
+                        
+                        # T列 = User Name, U列 = User Feedback
+                        worksheet.update(f'T{last_row_index}', user_name)  # 用户姓名列 (T列)
+                        worksheet.update(f'U{last_row_index}', user_feedback)  # 反馈内容列 (U列)
+                        
+                        logger.info(f"直接更新第{last_row_index}行的反馈信息成功")
+                        return True
+            except Exception as e:
+                logger.error(f"直接操作工作表失败: {e}")
         
-        if success:
-            logger.info(f"Successfully submitted simple feedback for translation: {translation_id}")
-            
-            # 更新session state中的反馈统计
-            if 'feedback_count' not in st.session_state:
-                st.session_state.feedback_count = 0
-            st.session_state.feedback_count += 1
-            
-            return True
-        else:
-            logger.error(f"Failed to submit feedback for translation: {translation_id}")
-            return False
-            
+        # 方法3: 使用通用的update方法
+        if hasattr(sheets_manager, 'update_feedback'):
+            success = sheets_manager.update_feedback(user_name, user_feedback)
+            if success:
+                logger.info("使用update_feedback方法成功更新反馈")
+                return True
+        
+        # 方法4: 如果有service属性，直接使用Google Sheets API
+        if hasattr(sheets_manager, 'service') and hasattr(sheets_manager, 'spreadsheet_id'):
+            try:
+                # 获取表格数据以确定最后一行
+                range_name = 'UsageLog!A:A'  # 假设工作表名为UsageLog
+                result = sheets_manager.service.spreadsheets().values().get(
+                    spreadsheetId=sheets_manager.spreadsheet_id,
+                    range=range_name
+                ).execute()
+                
+                values = result.get('values', [])
+                last_row = len(values)  # 最后一行号
+                
+                # 更新反馈字段（T列是用户名，U列是反馈）
+                feedback_range = f'UsageLog!T{last_row}:U{last_row}'
+                feedback_values = [[user_name, user_feedback]]
+                
+                sheets_manager.service.spreadsheets().values().update(
+                    spreadsheetId=sheets_manager.spreadsheet_id,
+                    range=feedback_range,
+                    valueInputOption='RAW',
+                    body={'values': feedback_values}
+                ).execute()
+                
+                logger.info(f"使用API直接更新第{last_row}行反馈成功")
+                return True
+                
+            except Exception as e:
+                logger.error(f"使用API更新反馈失败: {e}")
+        
+        logger.error("所有更新方法都失败了")
+        return False
+        
     except Exception as e:
-        logger.error(f"Error submitting feedback: {e}")
+        logger.error(f"更新反馈时发生错误: {e}")
         return False
 
-def _get_device_info() -> str:
-    """获取设备信息"""
-    # 从 session state 获取设备信息，如果没有则返回默认值
-    device_type = st.session_state.get('device_type', 'web')
-    browser_info = st.session_state.get('browser_info', 'unknown')
-    return f"{device_type}_{browser_info}"
-
-def _get_ip_hash() -> str:
-    """获取IP地址哈希（隐私保护）"""
-    # 使用会话ID生成一个隐私保护的哈希值
-    session_id = st.session_state.get('user_session_id', 'unknown')
-    return hashlib.md5(session_id.encode()).hexdigest()[:8]
-
-def _get_user_agent() -> str:
-    """获取用户代理信息"""
-    # 在 Streamlit 环境中，我们无法直接获取真实的 User Agent
-    # 返回一个标识 Streamlit 应用的字符串
-    return "RadiAI.Care/4.2.0 (Streamlit Web App)"
 
 def get_feedback_metrics() -> Dict[str, Any]:
     """
