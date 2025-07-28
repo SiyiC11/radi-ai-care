@@ -72,13 +72,22 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
             submitted = st.form_submit_button(submit_button, use_container_width=True)
             
             if submitted:
+                # 添加调试信息
+                st.write("🔍 DEBUG: 表单已提交")
+                st.write(f"🔍 DEBUG: 反馈内容长度: {len(user_feedback.strip()) if user_feedback else 0}")
+                
                 if user_feedback.strip():  # 确保反馈内容不为空
+                    st.write("🔍 DEBUG: 开始调用反馈保存函数")
+                    st.write(f"🔍 DEBUG: sheets_manager存在: {sheets_manager is not None}")
+                    
                     success = _save_feedback_to_new_sheet(
                         translation_id=translation_id,
                         user_name=user_name.strip(),
                         user_feedback=user_feedback.strip(),
                         sheets_manager=sheets_manager
                     )
+                    
+                    st.write(f"🔍 DEBUG: 反馈保存结果: {success}")
                     
                     if success:
                         st.success(success_message)
@@ -94,9 +103,11 @@ def render_simple_feedback_form(translation_id: str, sheets_manager, lang_cfg: D
                         return True
                     else:
                         st.error("❌ 反馈提交失败，请稍后重试")
+                        st.write("🔍 DEBUG: 反馈保存失败，请检查日志")
                         return False
                 else:
                     st.warning("⚠️ 请填写您的建议后再提交")
+                    st.write("🔍 DEBUG: 反馈内容为空")
                     return False
     
     return False
