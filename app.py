@@ -1,6 +1,6 @@
 """
-RadiAI.Care 主应用程序 - 集成反馈功能版本
-在翻译完成后添加简单的用户反馈收集功能
+RadiAI.Care 主应用程序 - 完整版带反馈持久化
+在翻译完成后添加简单的用户反馈收集功能，并保持翻译结果持久化
 """
 
 import os
@@ -263,6 +263,12 @@ def initialize_session_state():
     if 'feedback_count' not in st.session_state:
         st.session_state.feedback_count = 0
     
+    # 初始化翻译结果相关状态
+    if 'current_translation' not in st.session_state:
+        st.session_state.current_translation = None
+    if 'show_translation_result' not in st.session_state:
+        st.session_state.show_translation_result = False
+    
     # 初始化配置对象
     if 'app_config' not in st.session_state:
         st.session_state.app_config = AppConfig() if CONFIG_AVAILABLE else BasicConfig()
@@ -475,7 +481,7 @@ def render_input_section(lang_cfg):
     return report_text, file_type
 
 def handle_translation(report_text, file_type, lang_cfg):
-    """处理翻译请求"""
+    """处理翻译请求 - 带结果持久化"""
     if not TRANSLATOR_AVAILABLE:
         st.error("❌ 翻译功能不可用，请检查系统配置")
         return
@@ -521,10 +527,19 @@ def handle_translation(report_text, file_type, lang_cfg):
                 validation=validation
             )
             
-            # 显示结果
-            st.success("✅ 翻译完成")
-            st.markdown("### 📄 翻译结果")
-            st.markdown(result["content"])
+            # ========== 保存翻译结果到 session_state ==========
+            st.session_state['current_translation'] = {
+                'translation_id': translation_id,
+                'raw_text': report_text,
+                'translated_text': result["content"],
+                'processing_time': processing_time,
+                'timestamp': datetime.now().isoformat(),
+                'lang_cfg': lang_cfg,
+                'file_type': file_type
+            }
+            
+            # 设置标志表示有新的翻译结果
+            st.session_state['show_translation_result'] = True
             
             # 存储翻译结果到session state（用于反馈）
             st.session_state['last_translation_id'] = translation_id
@@ -532,15 +547,8 @@ def handle_translation(report_text, file_type, lang_cfg):
             st.session_state['last_translated_text'] = result["content"]
             st.session_state['last_processing_time'] = processing_time
             
-            # 显示剩余次数
-            remaining = st.session_state.daily_limit - st.session_state.translation_count
-            if remaining > 0:
-                st.info(f"今日还可使用 {remaining} 次")
-            else:
-                st.warning("今日配额已用完")
-            
-            # 添加简单反馈收集功能
-            render_simple_feedback_section(translation_id, lang_cfg)
+            # 强制页面重新运行以显示结果
+            st.rerun()
             
         else:
             st.error(f"❌ 翻译失败: {result.get('error', '未知错误')}")
@@ -549,46 +557,87 @@ def handle_translation(report_text, file_type, lang_cfg):
         st.error(f"❌ 翻译处理错误: {e}")
         logger.error(f"翻译错误: {e}")
 
+def render_translation_result():
+    """渲染保存的翻译结果"""
+    if st.session_state.get('show_translation_result') and st.session_state.get('current_translation'):
+        translation_data = st.session_state['current_translation']
+        
+        # 显示结果
+        st.success("✅ 翻译完成")
+        st.markdown("### 📄 翻译结果")
+        st.markdown(translation_data['translated_text'])
+        
+        # 显示剩余次数
+        remaining = st.session_state.daily_limit - st.session_state.translation_count
+        if remaining > 0:
+            st.info(f"今日还可使用 {remaining} 次")
+        else:
+            st.warning("今日配额已用完")
+        
+        # 显示反馈表单
+        render_simple_feedback_section(
+            translation_data['translation_id'], 
+            translation_data['lang_cfg']
+        )
+
 def render_simple_feedback_section(translation_id, lang_cfg):
     """渲染简单反馈区域"""
+    logger.info(f"🔍 DEBUG: render_simple_feedback_section被调用，translation_id={translation_id}")
+    
     if FEEDBACK_COMPONENT_AVAILABLE and st.session_state.get('sheets_manager'):
+        logger.info(f"🔍 DEBUG: 条件满足，准备调用render_simple_feedback_form")
+        
         try:
             # 使用反馈组件
-            render_simple_feedback_form(
+            result = render_simple_feedback_form(
                 translation_id=translation_id,
                 sheets_manager=st.session_state.sheets_manager,
                 lang_cfg=lang_cfg
             )
+            logger.info(f"🔍 DEBUG: render_simple_feedback_form返回结果: {result}")
+            
         except Exception as e:
             logger.error(f"反馈组件渲染失败: {e}")
             # 回退到简单的反馈收集
             render_fallback_feedback(translation_id, lang_cfg)
     else:
+        logger.warning(f"🔍 DEBUG: 反馈组件条件不满足")
+        logger.warning(f"🔍 DEBUG: FEEDBACK_COMPONENT_AVAILABLE={FEEDBACK_COMPONENT_AVAILABLE}")
+        logger.warning(f"🔍 DEBUG: sheets_manager存在={st.session_state.get('sheets_manager') is not None}")
+        
         # 如果反馈组件不可用，使用简单的反馈收集
         render_fallback_feedback(translation_id, lang_cfg)
 
 def render_fallback_feedback(translation_id, lang_cfg):
     """备用反馈收集"""
+    logger.info(f"🔍 DEBUG: render_fallback_feedback被调用")
+    
     feedback_key = f"feedback_submitted_{translation_id}"
     if not st.session_state.get(feedback_key, False):
         with st.expander("💬 快速反馈", expanded=False):
             st.markdown("您的评价对我们很重要！")
             
-            with st.form(f"fallback_feedback_{translation_id}"):
-                user_feedback = st.text_area(
-                    "请分享您的使用体验或建议",
-                    placeholder="例：翻译质量不错，希望增加语音播放功能...",
-                    height=80
-                )
-                submitted = st.form_submit_button("提交反馈", use_container_width=True)
-                
-                if submitted and user_feedback.strip():
-                    # 简单记录反馈
-                    st.session_state[feedback_key] = True
-                    st.session_state.feedback_count += 1
-                    st.success("✅ 感谢您的反馈！")
-                    st.balloons()
-                    logger.info(f"Fallback feedback submitted for {translation_id}")
+            # 不使用st.form，直接使用普通控件
+            user_feedback = st.text_area(
+                "请分享您的使用体验或建议",
+                placeholder="例：翻译质量不错，希望增加语音播放功能...",
+                height=80,
+                key=f"fallback_feedback_text_{translation_id}"
+            )
+            
+            submitted = st.button(
+                "提交反馈", 
+                use_container_width=True,
+                key=f"fallback_submit_{translation_id}"
+            )
+            
+            if submitted and user_feedback.strip():
+                # 简单记录反馈
+                st.session_state[feedback_key] = True
+                st.session_state.feedback_count += 1
+                st.success("✅ 感谢您的反馈！")
+                st.balloons()
+                logger.info(f"Fallback feedback submitted for {translation_id}")
 
 def log_usage_to_sheets(translation_id, text_hash, processing_time, file_type, content_length, lang_cfg, validation):
     """记录使用资料到 Google Sheets"""
@@ -785,6 +834,9 @@ def main():
             render_quota_exceeded()
             render_footer()
             return
+        
+        # ========== 显示保存的翻译结果（在输入之前） ==========
+        render_translation_result()
         
         # 输入区域
         report_text, file_type = render_input_section(lang_cfg)
