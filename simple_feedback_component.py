@@ -116,12 +116,12 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
         bool: 是否成功保存
     """
     try:
-        logger.info("开始保存反馈到FB工作表")
+        logger.info("开始保存反馈到Feedback工作表")
         
-        # 获取或创建FB工作表
+        # 获取或创建Feedback工作表
         fb_worksheet = _get_or_create_fb_worksheet(sheets_manager)
         if not fb_worksheet:
-            logger.error("无法获取或创建FB工作表")
+            logger.error("无法获取或创建Feedback工作表")
             return False
         
         # 准备反馈数据
@@ -140,17 +140,17 @@ def _save_feedback_to_new_sheet(translation_id: str, user_name: str, user_feedba
         # 添加反馈到工作表
         fb_worksheet.append_row(feedback_row)
         
-        logger.info(f"成功保存反馈到FB工作表: {translation_id}")
+        logger.info(f"成功保存反馈到Feedback工作表: {translation_id}")
         return True
         
     except Exception as e:
-        logger.error(f"保存反馈到FB工作表时发生错误: {e}")
+        logger.error(f"保存反馈到Feedback工作表时发生错误: {e}")
         return False
 
 
 def _get_or_create_fb_worksheet(sheets_manager):
     """
-    获取或创建FB工作表
+    获取或创建Feedback工作表
     
     Args:
         sheets_manager: Google Sheets 管理器实例
@@ -163,15 +163,15 @@ def _get_or_create_fb_worksheet(sheets_manager):
         if hasattr(sheets_manager, 'spreadsheet'):
             spreadsheet = sheets_manager.spreadsheet
             
-            # 检查是否已经存在FB工作表
+            # 检查是否已经存在Feedback工作表
             try:
-                fb_worksheet = spreadsheet.worksheet('FB')
-                logger.info("找到现有的FB工作表")
+                fb_worksheet = spreadsheet.worksheet('Feedback')
+                logger.info("找到现有的Feedback工作表")
                 return fb_worksheet
             except:
-                # FB工作表不存在，创建新的
-                logger.info("FB工作表不存在，正在创建...")
-                fb_worksheet = spreadsheet.add_worksheet(title='FB', rows=1000, cols=10)
+                # Feedback工作表不存在，创建新的
+                logger.info("Feedback工作表不存在，正在创建...")
+                fb_worksheet = spreadsheet.add_worksheet(title='Feedback', rows=1000, cols=10)
                 
                 # 设置表头
                 headers = [
@@ -186,7 +186,7 @@ def _get_or_create_fb_worksheet(sheets_manager):
                 ]
                 fb_worksheet.append_row(headers)
                 
-                logger.info("成功创建FB工作表并设置表头")
+                logger.info("成功创建Feedback工作表并设置表头")
                 return fb_worksheet
         
         # 方法2: 如果sheets_manager有service和spreadsheet_id属性
@@ -198,22 +198,22 @@ def _get_or_create_fb_worksheet(sheets_manager):
             spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
             sheet_names = [sheet['properties']['title'] for sheet in spreadsheet['sheets']]
             
-            if 'FB' in sheet_names:
-                # FB工作表已存在
-                logger.info("找到现有的FB工作表")
+            if 'Feedback' in sheet_names:
+                # Feedback工作表已存在
+                logger.info("找到现有的Feedback工作表")
                 # 返回工作表引用（需要用gspread重新获取）
                 import gspread
                 gc = gspread.service_account()
                 spreadsheet = gc.open_by_key(spreadsheet_id)
-                return spreadsheet.worksheet('FB')
+                return spreadsheet.worksheet('Feedback')
             else:
-                # 创建新的FB工作表
-                logger.info("正在创建FB工作表...")
+                # 创建新的Feedback工作表
+                logger.info("正在创建Feedback工作表...")
                 batch_update_body = {
                     'requests': [{
                         'addSheet': {
                             'properties': {
-                                'title': 'FB',
+                                'title': 'Feedback',
                                 'gridProperties': {
                                     'rowCount': 1000,
                                     'columnCount': 10
@@ -232,18 +232,18 @@ def _get_or_create_fb_worksheet(sheets_manager):
                 headers = [['日期', '时间', '翻译ID', '用户姓名', '反馈内容', '语言', '用户ID', '时间戳']]
                 service.spreadsheets().values().update(
                     spreadsheetId=spreadsheet_id,
-                    range='FB!A1:H1',
+                    range='Feedback!A1:H1',
                     valueInputOption='RAW',
                     body={'values': headers}
                 ).execute()
                 
-                logger.info("成功创建FB工作表")
+                logger.info("成功创建Feedback工作表")
                 
                 # 返回工作表引用
                 import gspread
                 gc = gspread.service_account()
                 spreadsheet = gc.open_by_key(spreadsheet_id)
-                return spreadsheet.worksheet('FB')
+                return spreadsheet.worksheet('Feedback')
         
         # 方法3: 尝试通过其他属性访问
         else:
@@ -251,7 +251,7 @@ def _get_or_create_fb_worksheet(sheets_manager):
             return None
             
     except Exception as e:
-        logger.error(f"获取或创建FB工作表时发生错误: {e}")
+        logger.error(f"获取或创建Feedback工作表时发生错误: {e}")
         return None
 
 
