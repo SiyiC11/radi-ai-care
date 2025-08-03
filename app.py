@@ -181,7 +181,7 @@ def get_footer_config(language):
             "footer_privacy_text": "我們僅收集翻譯服務必要的資訊，所有數據採用加密傳輸和儲存，嚴格遵守澳洲隱私法（Privacy Act 1988）規定，絕不與第三方分享您的醫療資訊。",
             "footer_terms_text": "本服務僅提供醫學文獻翻譯和教育解釋，不構成任何醫療建議或診斷。用戶須為所有醫療決策自負責任，並應諮詢專業醫師意見。",
             "footer_disclaimer_text": "AI翻譯可能存在錯誤，請與醫師核實所有重要醫療資訊。緊急情況請撥打000或前往最近的急診室。",
-            "footer_contact_text": "如有任何問題或建議，請聯繫 support@radiai.care | 本服務受澳洲法律管轄"
+            "footer_contact_text": "如有任何問題或建議，請聯繫 siyic46@gmail.com | 本服務受澳洲法律管轄"
         }
     else:  # 简体中文
         return {
@@ -191,7 +191,7 @@ def get_footer_config(language):
             "footer_privacy_text": "我们仅收集翻译服务必要的信息，所有数据采用加密传输和存储，严格遵守澳洲隐私法（Privacy Act 1988）规定，绝不与第三方分享您的医疗信息。",
             "footer_terms_text": "本服务仅提供医学文献翻译和教育解释，不构成任何医疗建议或诊断。用户须为所有医疗决策自负责任，并应咨询专业医师意见。",
             "footer_disclaimer_text": "AI翻译可能存在错误，请与医师核实所有重要医疗信息。紧急情况请拨打000或前往最近的急诊室。",
-            "footer_contact_text": "如有任何问题或建议，请联系 support@radiai.care | 本服务受澳洲法律管辖"
+            "footer_contact_text": "如有任何问题或建议，请联系 siyic46@gmail.com | 本服务受澳洲法律管辖"
         }
 
 def get_complete_language_config(language):
@@ -867,4 +867,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
