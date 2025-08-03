@@ -700,10 +700,10 @@ def render_quota_exceeded():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🆓 免费试用", use_container_width=True):
-                st.info("发送邮件至 trial@radiai.care")
+                st.info("发送邮件至 siyic46@gmail.com")
         with col2:
             if st.button("💳 立即升级", use_container_width=True):
-                st.info("访问 radiai.care/upgrade")
+                st.info("coming soon")
 
 def render_footer():
     """渲染页脚信息"""
@@ -867,3 +867,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
