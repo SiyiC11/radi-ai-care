@@ -11,7 +11,7 @@ RadiAI.Care - 智能醫療報告翻譯助手
 
 __version__ = "4.2.0"
 __author__ = "RadiAI.Care Team"
-__email__ = "support@radiai.care"
+__email__ = "siyic46@gmail.com"
 __license__ = "MIT"
 __description__ = "RadiAI.Care - 智能醫療報告翻譯助手"
 
@@ -238,4 +238,5 @@ def run_full_diagnostics():
 # 將診斷函數添加到導出列表
 if '__all__' in globals():
     __all__.extend([
+
         'check_system_
