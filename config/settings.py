@@ -176,7 +176,7 @@ class UIText:
                 "所有數據採用加密傳輸和儲存，符合澳洲隱私法（Privacy Act 1988）規定。",
                 "我們不會與任何第三方分享您的個人醫療資訊。",
                 "您可隨時要求查看、更正或刪除您的個人資訊。",
-                "如有隱私相關疑問，請聯繫 privacy@radiai.care。"
+                "如有隱私相關疑問，請聯繫 siyic46@gmail.com"
             ],
             
             # 使用條款內容
@@ -260,7 +260,7 @@ class UIText:
                 "所有数据采用加密传输和存储，符合澳洲隐私法（Privacy Act 1988）规定。",
                 "我们不会与任何第三方分享您的个人医疗信息。",
                 "您可随时要求查看、更正或删除您的个人信息。",
-                "如有隐私相关疑问，请联系 privacy@radiai.care。"
+                "如有隐私相关疑问，请联系 siyic46@gmail.com。"
             ],
             
             # 使用条款内容
@@ -448,3 +448,4 @@ CSS_STYLES = """
 def inject_css() -> None:
     """將全域樣式注入目前的 Streamlit 頁面"""
     st.markdown(CSS_STYLES, unsafe_allow_html=True)
+
