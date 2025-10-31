@@ -5,7 +5,6 @@
   [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/downloads/)
   [![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-FF4B4B.svg)](https://streamlit.io/)
   [![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-412991.svg)](https://openai.com/)
-  [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
   [![Architecture](https://img.shields.io/badge/Architecture-Modular-orange.svg)](#architecture)
   
   **A production-ready AI-powered medical translation platform serving the Australian Chinese community**
@@ -20,7 +19,7 @@
 
 **RadiAI.Care** is a sophisticated medical report translation platform I developed to address a critical healthcare communication gap in the Australian Chinese community. This project demonstrates my ability to:
 
-- **Build production-ready AI applications** with real-world impact (3,000+ active users)
+- **Build production-ready AI applications** with real-world impact (100+ active users)
 - **Implement complex system architectures** with modular, scalable design patterns
 - **Integrate multiple technologies** (AI/ML, cloud services, real-time data processing)
 - **Prioritize user experience** with bilingual support and accessibility features
